@@ -137,6 +137,37 @@ describe('Validation Schemas', () => {
       ).toThrow('Cannot be negative');
     });
 
+    test('duplicate participant in equal split throws', () => {
+      expect(() =>
+        equalSplitExpenseSchema.parse({
+          group_id: validGroupId,
+          title: 'Dinner buffet',
+          total_paise: 250000,
+          paid_by: validUserId1,
+          split_type: 'equal',
+          expense_date: '2026-09-20',
+          participant_ids: [validUserId1, validUserId1],
+        }),
+      ).toThrow('Duplicate participants are not allowed');
+    });
+
+    test('duplicate participant in custom split throws', () => {
+      expect(() =>
+        customSplitExpenseSchema.parse({
+          group_id: validGroupId,
+          title: 'Snacks',
+          total_paise: 15000,
+          paid_by: validUserId1,
+          split_type: 'custom',
+          expense_date: '2026-09-20',
+          allocations: [
+            { participant_id: validUserId1, owed_paise: 10000 },
+            { participant_id: validUserId1, owed_paise: 5000 },
+          ],
+        }),
+      ).toThrow('Duplicate participants are not allowed');
+    });
+
     test('total_paise exceeding max throws', () => {
       expect(() =>
         equalSplitExpenseSchema.parse({

@@ -4,17 +4,16 @@ import type { Group, GroupMember } from '../types/models';
 export const GroupsRepo = {
   listActiveGroups(): Group[] {
     const db = getDatabase();
-    return db.getAllSync<Group>(
+    const rows = db.getAllSync<Group>(
       `SELECT * FROM local_groups WHERE is_archived = 0 ORDER BY updated_at DESC`,
     );
+    return rows.map((r) => ({ ...r, is_archived: Boolean(r.is_archived) }));
   },
 
   getGroupById(id: string): Group | null {
     const db = getDatabase();
-    return (
-      db.getFirstSync<Group>(`SELECT * FROM local_groups WHERE id = ?`, [id]) ??
-      null
-    );
+    const row = db.getFirstSync<Group>(`SELECT * FROM local_groups WHERE id = ?`, [id]);
+    return row ? { ...row, is_archived: Boolean(row.is_archived) } : null;
   },
 
   upsertGroup(group: Group): void {

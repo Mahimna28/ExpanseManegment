@@ -9,7 +9,7 @@
 import { supabase } from '../services/supabase';
 import { getDatabase } from '../db/client';
 import { useSyncStore } from '../stores/sync.store';
-import type { ChangeLogRow } from '../types/models';
+import type { ChangeLogRow, ChangeLogEntityType } from '../types/models';
 
 const PAGE_SIZE = 200;
 
@@ -77,13 +77,42 @@ export async function pullGroupChanges(groupId: string): Promise<PullResult> {
 
 // ── Apply a single change_log row to local SQLite ─────────────
 
+/**
+ * Maps incoming change_log entity_type (canonical or legacy plural) to supported entity type.
+ */
+export function normalizeEntityType(entityType: string): ChangeLogEntityType | null {
+  switch (entityType) {
+    case 'expense':
+    case 'expenses':
+      return 'expense';
+    case 'expense_split':
+    case 'expense_splits':
+      return 'expense_split';
+    case 'settlement':
+    case 'settlements':
+      return 'settlement';
+    case 'member':
+    case 'group_members':
+      return 'member';
+    case 'category':
+    case 'categories':
+      return 'category';
+    case 'group':
+    case 'groups':
+      return 'group';
+    default:
+      return null;
+  }
+}
+
 function applyChangeLogRow(
   db: ReturnType<typeof getDatabase>,
   row: ChangeLogRow,
 ): void {
   const p = row.payload as Record<string, unknown>;
+  const canonicalType = normalizeEntityType(row.entity_type);
 
-  switch (row.entity_type) {
+  switch (canonicalType) {
     case 'expense':
       upsertExpense(db, p, row.operation);
       break;
@@ -101,6 +130,9 @@ function applyChangeLogRow(
       break;
     case 'group':
       upsertGroup(db, p, row.operation);
+      break;
+    default:
+      console.warn(`[Sync Pull] Unrecognized entity_type: "${row.entity_type}"`);
       break;
   }
 }

@@ -108,7 +108,10 @@ export const equalSplitExpenseSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
   participant_ids: z
     .array(uuidSchema)
-    .min(1, 'At least one participant required'),
+    .min(1, 'At least one participant required')
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: 'Duplicate participants are not allowed',
+    }),
 });
 
 export const customSplitExpenseSchema = z.object({
@@ -132,7 +135,10 @@ export const customSplitExpenseSchema = z.object({
           .min(0, 'Cannot be negative'),
       }),
     )
-    .min(1, 'At least one allocation required'),
+    .min(1, 'At least one allocation required')
+    .refine((allocs) => new Set(allocs.map((a) => a.participant_id)).size === allocs.length, {
+      message: 'Duplicate participants are not allowed',
+    }),
 });
 
 export const expenseSchema = z.discriminatedUnion('split_type', [

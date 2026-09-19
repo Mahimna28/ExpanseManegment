@@ -60,6 +60,10 @@ export function equalSplit(
   assertPositivePaise(totalPaise, 'Total');
   assertNonEmpty(participantIds, 'Participants');
 
+  if (new Set(participantIds).size !== participantIds.length) {
+    throw new Error('Duplicate participant IDs are not allowed');
+  }
+
   const sorted = [...participantIds].sort(); // lexicographic, deterministic
   const n = sorted.length;
   const base = Math.trunc(totalPaise / n);
@@ -88,6 +92,7 @@ export function equalSplit(
  * Validation rules:
  * - Every owed_paise >= 0 (zero is allowed — "included but owes nothing")
  * - SUM(owed_paise) === totalPaise (exact integer equality)
+ * - No duplicate participant IDs
  *
  * Examples:
  *   customSplit(10000, [{id:'a', owed:6000},{id:'b', owed:4000}]) → valid ✓
@@ -99,10 +104,12 @@ export function customSplit(
   allocations: Array<{ participant_id: string; owed_paise: number }>,
 ): SplitAllocation[] {
   assertPositivePaise(totalPaise, 'Total');
-  assertNonEmpty(
-    allocations.map((a) => a.participant_id),
-    'Allocations',
-  );
+  const participantIds = allocations.map((a) => a.participant_id);
+  assertNonEmpty(participantIds, 'Allocations');
+
+  if (new Set(participantIds).size !== participantIds.length) {
+    throw new Error('Duplicate participant IDs are not allowed');
+  }
 
   for (const a of allocations) {
     if (!Number.isInteger(a.owed_paise)) {

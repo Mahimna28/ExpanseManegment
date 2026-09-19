@@ -4,18 +4,20 @@ import type { Category } from '../types/models';
 export const CategoriesRepo = {
   listActiveCategories(groupId: string): Category[] {
     const db = getDatabase();
-    return db.getAllSync<Category>(
+    const rows = db.getAllSync<Category>(
       `SELECT * FROM local_categories WHERE group_id = ? AND is_archived = 0 ORDER BY name ASC`,
       [groupId],
     );
+    return rows.map((r) => ({ ...r, is_archived: Boolean(r.is_archived) }));
   },
 
   getAllCategories(groupId: string): Category[] {
     const db = getDatabase();
-    return db.getAllSync<Category>(
+    const rows = db.getAllSync<Category>(
       `SELECT * FROM local_categories WHERE group_id = ? ORDER BY name ASC`,
       [groupId],
     );
+    return rows.map((r) => ({ ...r, is_archived: Boolean(r.is_archived) }));
   },
 
   upsertCategory(category: Category): void {

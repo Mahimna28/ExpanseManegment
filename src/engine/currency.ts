@@ -16,7 +16,7 @@ export const MAX_EXPENSE_PAISE = 1_000_000_000;
  *   "100"      → 10000
  *   "100.50"   → 10050
  *   "100.5"    → 10050
- *   "100.505"  → 10050  (truncates beyond 2 decimal places, no rounding)
+ *   "100.505"  → throws ('Amount cannot have more than 2 decimal places')
  *   "1,250.00" → 125000
  *   ""         → throws
  *   "-1"       → throws (use absolute values; sign is expressed by context)
@@ -28,8 +28,15 @@ export function rupeesToPaise(input: string): number {
   const clean = input.trim().replace(/,/g, '');
   if (!clean) throw new Error('Amount is required');
 
+  if (clean.includes('.')) {
+    const decParts = clean.split('.');
+    if (decParts.length > 2 || decParts[1].length > 2) {
+      throw new Error('Amount cannot have more than 2 decimal places');
+    }
+  }
+
   // Must be a valid non-negative decimal number
-  if (!/^\d+(\.\d{0,2})?$/.test(clean)) {
+  if (!/^\d+(\.\d{1,2})?$/.test(clean)) {
     throw new Error(`Invalid amount: "${input}"`);
   }
 

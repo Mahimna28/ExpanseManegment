@@ -25,7 +25,10 @@ describe('rupeesToPaise', () => {
   test('negative throws', () => expect(() => rupeesToPaise('-100')).toThrow());
   test('exceeds max throws', () => expect(() => rupeesToPaise('10000001')).toThrow('maximum'));
   test('text throws', () => expect(() => rupeesToPaise('abc')).toThrow('Invalid amount'));
-  test('too many decimals throws', () => expect(() => rupeesToPaise('1.234')).toThrow('Invalid amount'));
+  test('too many decimals throws with specific error', () => {
+    expect(() => rupeesToPaise('1.234')).toThrow('Amount cannot have more than 2 decimal places');
+    expect(() => rupeesToPaise('100.505')).toThrow('Amount cannot have more than 2 decimal places');
+  });
 });
 
 describe('paiseToRupees', () => {

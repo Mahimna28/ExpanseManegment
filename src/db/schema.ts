@@ -2,12 +2,12 @@ import { getDatabase } from './client';
 
 /**
  * Current local schema version.
- * Increment this whenever a migration is added.
+ * Increment this whenever a forward migration is added.
  */
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 /**
- * Initializes the local SQLite database and applies all pending migrations.
+ * Initializes the local SQLite database and applies all pending migrations atomically.
  * Safe to call on every app startup — migrations are idempotent.
  */
 export function initLocalDatabase(): void {
@@ -28,11 +28,21 @@ export function initLocalDatabase(): void {
   const applied = getAppliedVersions(db);
 
   if (!applied.has(1)) {
-    applyV1(db);
-    logMigration(db, 1);
+    db.withTransactionSync(() => {
+      applyV1(db);
+      logMigration(db, 1);
+    });
   }
 
-  // Future migrations: if (!applied.has(2)) { applyV2(db); logMigration(db, 2); }
+  if (!applied.has(2)) {
+    db.withTransactionSync(() => {
+      applyV2(db);
+      logMigration(db, 2);
+    });
+  }
+
+  // Crash recovery: recover any mutations left in 'syncing' state from a previous session
+  db.runSync(`UPDATE local_outbox SET status = 'pending' WHERE status = 'syncing'`);
 }
 
 function getAppliedVersions(db: ReturnType<typeof getDatabase>): Set<number> {
@@ -88,7 +98,7 @@ function applyV1(db: ReturnType<typeof getDatabase>): void {
       UNIQUE (group_id, user_id)
     );
 
-    -- ── Categories ────────────────────────────────────────────
+    -- ── Categories ────────────────────────────────────
     CREATE TABLE IF NOT EXISTS local_categories (
       id            TEXT PRIMARY KEY,
       group_id      TEXT NOT NULL,
@@ -187,5 +197,13 @@ function applyV1(db: ReturnType<typeof getDatabase>): void {
     CREATE INDEX IF NOT EXISTS idx_splits_expense    ON local_splits (expense_id);
     CREATE INDEX IF NOT EXISTS idx_settlements_group ON local_settlements (group_id, is_voided);
     CREATE INDEX IF NOT EXISTS idx_outbox_status     ON local_outbox (status, created_at ASC);
+  `);
+}
+
+// ── V2: Forward migration — outbox entity index for fast discard/cascade ──────
+
+function applyV2(db: ReturnType<typeof getDatabase>): void {
+  db.execSync(`
+    CREATE INDEX IF NOT EXISTS idx_outbox_entity ON local_outbox (entity_type, entity_id);
   `);
 }

@@ -80,6 +80,11 @@ describe('equalSplit', () => {
   test('empty participants throws', () => {
     expect(() => equalSplit(10000, [])).toThrow('empty');
   });
+  test('duplicate participant IDs in equalSplit throws', () => {
+    expect(() => equalSplit(10000, ['alice', 'bob', 'alice'])).toThrow(
+      'Duplicate participant IDs are not allowed',
+    );
+  });
 });
 
 // ── customSplit ───────────────────────────────────────────────
@@ -132,6 +137,15 @@ describe('customSplit', () => {
 
   test('empty allocations throws', () => {
     expect(() => customSplit(10000, [])).toThrow('empty');
+  });
+
+  test('duplicate participant IDs in customSplit throws', () => {
+    expect(() =>
+      customSplit(10000, [
+        { participant_id: 'alice', owed_paise: 5000 },
+        { participant_id: 'alice', owed_paise: 5000 },
+      ]),
+    ).toThrow('Duplicate participant IDs are not allowed');
   });
 });
 

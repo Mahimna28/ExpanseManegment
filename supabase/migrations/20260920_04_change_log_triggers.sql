@@ -15,11 +15,12 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_payload    JSONB;
-  v_entity_id  UUID;
-  v_group_id   UUID;
-  v_operation  TEXT;
-  v_actor_id   UUID;
+  v_payload     JSONB;
+  v_entity_id   UUID;
+  v_group_id    UUID;
+  v_operation   TEXT;
+  v_actor_id    UUID;
+  v_entity_type TEXT;
 BEGIN
   -- Determine operation
   v_operation := TG_OP;  -- 'INSERT', 'UPDATE', 'DELETE'
@@ -47,11 +48,21 @@ BEGIN
   -- Try to get actor from session (may be NULL for trigger-generated writes)
   v_actor_id := auth.uid();
 
-  -- Map table name to entity_type
+  -- Map table name to canonical singular entity_type
+  CASE TG_TABLE_NAME
+    WHEN 'expenses' THEN v_entity_type := 'expense';
+    WHEN 'expense_splits' THEN v_entity_type := 'expense_split';
+    WHEN 'settlements' THEN v_entity_type := 'settlement';
+    WHEN 'group_members' THEN v_entity_type := 'member';
+    WHEN 'categories' THEN v_entity_type := 'category';
+    WHEN 'groups' THEN v_entity_type := 'group';
+    ELSE v_entity_type := TG_TABLE_NAME;
+  END CASE;
+
   INSERT INTO public.change_log (group_id, entity_type, entity_id, operation, actor_id, payload)
   VALUES (
     v_group_id,
-    TG_TABLE_NAME,  -- 'expenses', 'expense_splits', 'settlements', etc.
+    v_entity_type,
     v_entity_id,
     v_operation,
     v_actor_id,
@@ -92,4 +103,10 @@ CREATE TRIGGER trg_cl_group_members
 DROP TRIGGER IF EXISTS trg_cl_categories ON public.categories;
 CREATE TRIGGER trg_cl_categories
   AFTER INSERT OR UPDATE OR DELETE ON public.categories
+  FOR EACH ROW EXECUTE FUNCTION public.log_change();
+
+-- Groups
+DROP TRIGGER IF EXISTS trg_cl_groups ON public.groups;
+CREATE TRIGGER trg_cl_groups
+  AFTER INSERT OR UPDATE OR DELETE ON public.groups
   FOR EACH ROW EXECUTE FUNCTION public.log_change();

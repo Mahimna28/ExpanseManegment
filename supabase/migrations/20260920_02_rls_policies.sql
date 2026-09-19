@@ -14,9 +14,44 @@ ALTER TABLE public.settlements       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.change_log        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.outbox_idempotency ENABLE ROW LEVEL SECURITY;
 
--- ── Helper: is the caller an active member of a given group? ──
--- Used inline in policies to avoid function-call overhead.
--- Postgres partial indexes on (user_id) WHERE status='active' make this fast.
+-- ── Non-recursive Security Definer Helpers ────────────────────
+-- These functions break RLS recursion by executing as the database owner
+-- with a fixed search_path, preventing infinite loops when querying group_members.
+
+CREATE OR REPLACE FUNCTION public.is_active_group_member(p_group_id UUID, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.group_members
+    WHERE group_id = p_group_id AND user_id = p_user_id AND status = 'active'
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_comember(p_user_id UUID, p_target_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.group_members gm1
+    JOIN public.group_members gm2 ON gm1.group_id = gm2.group_id
+    WHERE gm1.user_id = p_user_id AND gm1.status = 'active'
+      AND gm2.user_id = p_target_id AND gm2.status = 'active'
+  );
+$$;
+
+-- Revoke execute from public/anon, grant only to authenticated
+REVOKE EXECUTE ON FUNCTION public.is_active_group_member(UUID, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_active_group_member(UUID, UUID) TO authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.is_comember(UUID, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_comember(UUID, UUID) TO authenticated;
 
 -- ── Profiles ─────────────────────────────────────────────────
 
@@ -25,12 +60,7 @@ CREATE POLICY "profiles_select" ON public.profiles
   FOR SELECT TO authenticated
   USING (
     auth.uid() = id
-    OR EXISTS (
-      SELECT 1 FROM public.group_members gm1
-      JOIN public.group_members gm2 ON gm1.group_id = gm2.group_id
-      WHERE gm1.user_id = auth.uid()  AND gm1.status = 'active'
-        AND gm2.user_id = profiles.id AND gm2.status = 'active'
-    )
+    OR public.is_comember(auth.uid(), id)
   );
 
 -- Users may only update their own profile (display_name, avatar_url)
@@ -47,25 +77,19 @@ CREATE POLICY "profiles_update_own" ON public.profiles
 CREATE POLICY "groups_select_member" ON public.groups
   FOR SELECT TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_id = groups.id AND user_id = auth.uid() AND status = 'active'
-    )
+    public.is_active_group_member(id, auth.uid())
   );
 
 -- No direct INSERT/UPDATE — only via create_group / update_group RPCs
 
 -- ── Group Members ─────────────────────────────────────────────
 
+-- Non-recursive: can read own row or co-members in active groups
 CREATE POLICY "members_select_same_group" ON public.group_members
   FOR SELECT TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.group_members gm
-      WHERE gm.group_id = group_members.group_id
-        AND gm.user_id = auth.uid()
-        AND gm.status = 'active'
-    )
+    user_id = auth.uid()
+    OR public.is_active_group_member(group_id, auth.uid())
   );
 
 -- No direct INSERT/UPDATE — only via join_group / revoke_member RPCs
@@ -75,10 +99,7 @@ CREATE POLICY "members_select_same_group" ON public.group_members
 CREATE POLICY "categories_select_member" ON public.categories
   FOR SELECT TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_id = categories.group_id AND user_id = auth.uid() AND status = 'active'
-    )
+    public.is_active_group_member(group_id, auth.uid())
   );
 
 -- Active members may insert categories directly (RPC normalizes name)
@@ -86,10 +107,7 @@ CREATE POLICY "categories_insert_member" ON public.categories
   FOR INSERT TO authenticated
   WITH CHECK (
     created_by = auth.uid()
-    AND EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_id = categories.group_id AND user_id = auth.uid() AND status = 'active'
-    )
+    AND public.is_active_group_member(group_id, auth.uid())
   );
 
 -- No direct UPDATE/DELETE — only via update_category / archive_category RPCs
@@ -99,10 +117,7 @@ CREATE POLICY "categories_insert_member" ON public.categories
 CREATE POLICY "expenses_select_member" ON public.expenses
   FOR SELECT TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_id = expenses.group_id AND user_id = auth.uid() AND status = 'active'
-    )
+    public.is_active_group_member(group_id, auth.uid())
   );
 
 -- No direct INSERT/UPDATE — only via create_expense / update_expense / void_expense RPCs
@@ -114,10 +129,8 @@ CREATE POLICY "splits_select_member" ON public.expense_splits
   USING (
     EXISTS (
       SELECT 1 FROM public.expenses e
-      JOIN public.group_members gm ON gm.group_id = e.group_id
       WHERE e.id = expense_splits.expense_id
-        AND gm.user_id = auth.uid()
-        AND gm.status = 'active'
+        AND public.is_active_group_member(e.group_id, auth.uid())
     )
   );
 
@@ -128,10 +141,7 @@ CREATE POLICY "splits_select_member" ON public.expense_splits
 CREATE POLICY "settlements_select_member" ON public.settlements
   FOR SELECT TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_id = settlements.group_id AND user_id = auth.uid() AND status = 'active'
-    )
+    public.is_active_group_member(group_id, auth.uid())
   );
 
 -- No direct INSERT/UPDATE — only via create_settlement / void_settlement RPCs
@@ -141,10 +151,7 @@ CREATE POLICY "settlements_select_member" ON public.settlements
 CREATE POLICY "change_log_select_member" ON public.change_log
   FOR SELECT TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_id = change_log.group_id AND user_id = auth.uid() AND status = 'active'
-    )
+    public.is_active_group_member(group_id, auth.uid())
   );
 
 -- No direct INSERT — written by triggers only

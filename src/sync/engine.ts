@@ -26,12 +26,16 @@ export async function triggerSync(): Promise<void> {
   store.setStatus('pushing');
 
   try {
+    const db = getDatabase();
+
+    // Recover any stale mutations stuck in 'syncing' (e.g. from app crash / restart)
+    db.runSync(`UPDATE local_outbox SET status = 'pending' WHERE status = 'syncing'`);
+
     // Phase 1: Push — drain the outbox
     await drainOutbox();
 
     // Phase 2: Pull — fetch changes for all groups user is in
     store.setStatus('pulling');
-    const db = getDatabase();
     const groups = db.getAllSync<{ group_id: string }>(
       `SELECT DISTINCT group_id FROM local_sync_cursors`,
     );
@@ -47,18 +51,26 @@ export async function triggerSync(): Promise<void> {
     ]);
 
     const revokedGroups: string[] = [];
+    let pullError: string | null = null;
 
     for (const groupId of groupSet) {
+      if (!groupId) continue;
       const result = await pullGroupChanges(groupId);
-      if (result.revoked) revokedGroups.push(groupId);
+      if (result?.revoked) revokedGroups.push(groupId);
+      if (result?.error && !pullError) {
+        pullError = result.error;
+      }
     }
 
-    store.setLastSyncedAt(new Date().toISOString());
-    store.setStatus('idle');
+    if (pullError) {
+      store.setStatus('error', `Sync pull error: ${pullError}`);
+    } else {
+      store.setLastSyncedAt(new Date().toISOString());
+      store.setStatus('idle');
+    }
 
     if (revokedGroups.length > 0) {
       // Notify UI about revoked groups (navigation handled in root layout)
-      store.setStatus('idle', undefined);
       store.incrementDbVersion();
     }
   } catch (err: unknown) {
