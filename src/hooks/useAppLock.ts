@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
@@ -20,6 +20,17 @@ export function useAppLock() {
   useEffect(() => {
     async function loadConfig() {
       try {
+        if (Platform.OS === 'web') {
+          const enabled = typeof localStorage !== 'undefined' ? localStorage.getItem(APP_LOCK_ENABLED_KEY) : null;
+          if (enabled === 'true') {
+            setAppLockEnabled(true);
+            setAppLockStatus('locked');
+          } else {
+            setAppLockEnabled(false);
+            setAppLockStatus('disabled');
+          }
+          return;
+        }
         const enabled = await SecureStore.getItemAsync(APP_LOCK_ENABLED_KEY);
         if (enabled === 'true') {
           setAppLockEnabled(true);
@@ -74,12 +85,35 @@ export function useAppLock() {
     }
   }
 
+  const safeStore = {
+    getItem: async (key: string) => {
+      if (Platform.OS === 'web') {
+        return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+      }
+      return SecureStore.getItemAsync(key);
+    },
+    setItem: async (key: string, value: string) => {
+      if (Platform.OS === 'web') {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(key, value);
+        return;
+      }
+      return SecureStore.setItemAsync(key, value);
+    },
+    deleteItem: async (key: string) => {
+      if (Platform.OS === 'web') {
+        if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
+        return;
+      }
+      return SecureStore.deleteItemAsync(key);
+    },
+  };
+
   /**
    * Verifies the user-entered PIN against the stored SHA-256 hash.
    */
   async function verifyPin(pin: string): Promise<boolean> {
     try {
-      const storedHash = await SecureStore.getItemAsync(APP_LOCK_PIN_KEY);
+      const storedHash = await safeStore.getItem(APP_LOCK_PIN_KEY);
       if (!storedHash) return false;
 
       const inputHash = await Crypto.digestStringAsync(
@@ -105,8 +139,8 @@ export function useAppLock() {
       Crypto.CryptoDigestAlgorithm.SHA256,
       pin,
     );
-    await SecureStore.setItemAsync(APP_LOCK_PIN_KEY, hash);
-    await SecureStore.setItemAsync(APP_LOCK_ENABLED_KEY, 'true');
+    await safeStore.setItem(APP_LOCK_PIN_KEY, hash);
+    await safeStore.setItem(APP_LOCK_ENABLED_KEY, 'true');
     setAppLockEnabled(true);
     setAppLockStatus('unlocked');
   }
@@ -115,8 +149,8 @@ export function useAppLock() {
    * Disables app lock.
    */
   async function disableAppLock(): Promise<void> {
-    await SecureStore.deleteItemAsync(APP_LOCK_PIN_KEY);
-    await SecureStore.setItemAsync(APP_LOCK_ENABLED_KEY, 'false');
+    await safeStore.deleteItem(APP_LOCK_PIN_KEY);
+    await safeStore.setItem(APP_LOCK_ENABLED_KEY, 'false');
     setAppLockEnabled(false);
     setAppLockStatus('disabled');
   }
