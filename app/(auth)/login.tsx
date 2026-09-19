@@ -14,7 +14,8 @@ import {
 import { useRouter } from 'expo-router';
 import { signIn } from '../../src/services/auth';
 import { loginSchema } from '../../src/engine/validation';
-import { Receipt, Lock, Mail } from 'lucide-react-native';
+import { Receipt, Lock, Mail, Users } from 'lucide-react-native';
+import { useAuthStore } from '../../src/stores/auth.store';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -22,6 +23,17 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+
+  const handleDemoMode = () => {
+    const demoId = 'local-user-' + Math.random().toString(36).substring(2, 9);
+    useAuthStore.getState().setUser(demoId, {
+      id: demoId,
+      display_name: 'Mahimna',
+      email: email.trim() || 'demo@expenseshare.local',
+      updated_at: new Date().toISOString(),
+    });
+    router.replace('/(app)');
+  };
 
   const handleLogin = async () => {
     setErrors({});
@@ -42,7 +54,14 @@ export default function LoginScreen() {
       // Navigation is automatically handled by the RootLayout auth state observer
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Invalid credentials';
-      Alert.alert('Sign In Failed', message);
+      Alert.alert(
+        'Sign In Failed',
+        `${message}\n\nWould you like to explore the app in Offline / Demo Mode?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Enter Demo Mode', onPress: handleDemoMode },
+        ],
+      );
     } finally {
       setLoading(false);
     }
@@ -113,10 +132,24 @@ export default function LoginScreen() {
               <Text style={styles.primaryButtonText}>Sign In</Text>
             )}
           </TouchableOpacity>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>OR</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={styles.demoButton}
+            onPress={handleDemoMode}
+          >
+            <Users size={16} color="#38BDF8" />
+            <Text style={styles.demoButtonText}>Explore in Offline / Demo Mode</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Have an invite code?</Text>
+          <Text style={styles.footerText}>Want to join with invite code?</Text>
           <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
             <Text style={styles.footerLink}> Create Account</Text>
           </TouchableOpacity>
@@ -241,6 +274,38 @@ const styles = StyleSheet.create({
   footerLink: {
     color: '#3B82F6',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+    gap: 10,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#334155',
+  },
+  dividerText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  demoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#0F172A',
+    paddingVertical: 13,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+  },
+  demoButtonText: {
+    color: '#38BDF8',
+    fontSize: 15,
     fontWeight: '600',
   },
 });

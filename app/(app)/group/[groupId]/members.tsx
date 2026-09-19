@@ -2,24 +2,51 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   Alert,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import * as Crypto from 'expo-crypto';
 import { GroupsRepo } from '../../../../src/repositories/groups.repo';
 import { useAuthStore } from '../../../../src/stores/auth.store';
+import { useSyncStore } from '../../../../src/stores/sync.store';
 import { supabase } from '../../../../src/services/supabase';
 import { triggerSync } from '../../../../src/sync/engine';
-import { Share2, UserX, Crown, Shield } from 'lucide-react-native';
+import { Share2, UserX, Crown, Shield, Plus } from 'lucide-react-native';
 
 export default function GroupMembersScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const currentUserId = useAuthStore((s) => s.userId);
+  const dbVersion = useSyncStore((s) => s.dbVersion);
 
   const group = GroupsRepo.getGroupById(groupId);
   const members = GroupsRepo.listMembers(groupId);
+
+  const [newMemberName, setNewMemberName] = useState('');
+
+  const handleAddLocalMember = () => {
+    if (!newMemberName.trim()) {
+      Alert.alert('Validation Error', 'Please enter a name for the member');
+      return;
+    }
+    const now = new Date().toISOString();
+    const newUid = 'member-' + Math.random().toString(36).substring(2, 9);
+    GroupsRepo.upsertMember({
+      id: Crypto.randomUUID(),
+      group_id: groupId,
+      user_id: newUid,
+      role: 'member',
+      status: 'active',
+      display_name: newMemberName.trim(),
+      joined_at: now,
+      created_at: now,
+    });
+    setNewMemberName('');
+    useSyncStore.getState().incrementDbVersion();
+  };
 
   const currentMember = members.find((m) => m.user_id === currentUserId);
   const isOwnerOrAdmin = currentMember?.role === 'owner' || currentMember?.role === 'admin';
@@ -75,6 +102,24 @@ export default function GroupMembersScreen() {
           <Share2 size={16} color="#FFFFFF" />
           <Text style={styles.shareButtonText}>Share</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Quick Add Friend / Member */}
+      <View style={styles.addCard}>
+        <Text style={styles.addCardTitle}>Add Member to Group</Text>
+        <View style={styles.addInputRow}>
+          <TextInput
+            style={styles.addInput}
+            value={newMemberName}
+            onChangeText={setNewMemberName}
+            placeholder="Friend's Name (e.g. Rohan)"
+            placeholderTextColor="#64748B"
+          />
+          <TouchableOpacity style={styles.addButton} onPress={handleAddLocalMember}>
+            <Plus size={16} color="#FFFFFF" />
+            <Text style={styles.addButtonText}>Add</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Members List */}
@@ -218,5 +263,49 @@ const styles = StyleSheet.create({
   },
   revokeButton: {
     padding: 8,
+  },
+  addCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  addCardTitle: {
+    fontSize: 12,
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  addInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  addInput: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#F8FAFC',
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    justifyContent: 'center',
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });

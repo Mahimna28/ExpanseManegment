@@ -39,16 +39,23 @@ export default function NewGroupScreen() {
 
     setLoading(true);
     try {
-      // 1. Call create_group RPC on Supabase
-      const { data, error: rpcErr } = await supabase.rpc('create_group', {
-        p_name: name.trim(),
-        p_description: description.trim() || null,
-      });
+      let groupId: string;
+      let inviteCode: string;
 
-      if (rpcErr) throw rpcErr;
+      try {
+        const { data, error: rpcErr } = await supabase.rpc('create_group', {
+          p_name: name.trim(),
+          p_description: description.trim() || null,
+        });
 
-      const groupId = data.group_id;
-      const inviteCode = data.invite_code;
+        if (rpcErr) throw rpcErr;
+        groupId = data.group_id;
+        inviteCode = data.invite_code;
+      } catch (networkErr) {
+        console.warn('Backend create_group failed, creating offline group:', networkErr);
+        groupId = Crypto.randomUUID();
+        inviteCode = 'GRP' + Math.random().toString(36).substring(2, 7).toUpperCase();
+      }
 
       // 2. Cache in local SQLite
       const now = new Date().toISOString();

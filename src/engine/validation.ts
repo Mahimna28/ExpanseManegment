@@ -58,7 +58,7 @@ export const registerSchema = z
       .min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string(),
     display_name: displayNameSchema,
-    invite_code: inviteCodeSchema,
+    invite_code: z.string().trim().max(10, 'Invalid invite code').optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords don't match",

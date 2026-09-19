@@ -15,7 +15,8 @@ import { useRouter } from 'expo-router';
 import { signUp } from '../../src/services/auth';
 import { supabase } from '../../src/services/supabase';
 import { registerSchema } from '../../src/engine/validation';
-import { User, Lock, Mail, KeyRound } from 'lucide-react-native';
+import { User, Lock, Mail, KeyRound, Users } from 'lucide-react-native';
+import { useAuthStore } from '../../src/stores/auth.store';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -27,6 +28,17 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const handleDemoMode = () => {
+    const demoId = 'local-user-' + Math.random().toString(36).substring(2, 9);
+    useAuthStore.getState().setUser(demoId, {
+      id: demoId,
+      display_name: displayName.trim() || 'Mahimna',
+      email: email.trim() || 'demo@expenseshare.local',
+      updated_at: new Date().toISOString(),
+    });
+    router.replace('/(app)');
+  };
+
   const handleRegister = async () => {
     setErrors({});
     const validation = registerSchema.safeParse({
@@ -34,7 +46,7 @@ export default function RegisterScreen() {
       password,
       confirmPassword,
       display_name: displayName,
-      invite_code: inviteCode,
+      invite_code: inviteCode.trim() ? inviteCode.trim() : undefined,
     });
 
     if (!validation.success) {
@@ -68,7 +80,14 @@ export default function RegisterScreen() {
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Registration failed';
-      Alert.alert('Sign Up Failed', message);
+      Alert.alert(
+        'Sign Up Failed',
+        `${message}\n\nWould you like to explore the app now in Offline / Demo Mode?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Enter Demo Mode', onPress: handleDemoMode },
+        ],
+      );
     } finally {
       setLoading(false);
     }
@@ -120,20 +139,27 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Group Invite Code</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Group Invite Code</Text>
+              <Text style={styles.optionalBadge}>Optional</Text>
+            </View>
             <View style={[styles.inputWrapper, errors.invite_code && styles.inputError]}>
               <KeyRound size={18} color="#64748B" />
               <TextInput
                 style={styles.input}
                 value={inviteCode}
                 onChangeText={(t) => setInviteCode(t.toUpperCase())}
-                placeholder="10-character code"
+                placeholder="Leave blank to create a new group"
                 placeholderTextColor="#64748B"
                 autoCapitalize="characters"
                 maxLength={10}
               />
             </View>
-            {errors.invite_code && <Text style={styles.errorText}>{errors.invite_code}</Text>}
+            {errors.invite_code ? (
+              <Text style={styles.errorText}>{errors.invite_code}</Text>
+            ) : (
+              <Text style={styles.helpText}>Only needed if joining a friend's existing group.</Text>
+            )}
           </View>
 
           <View style={styles.inputGroup}>
@@ -180,6 +206,20 @@ export default function RegisterScreen() {
             ) : (
               <Text style={styles.primaryButtonText}>Create Account</Text>
             )}
+          </TouchableOpacity>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>OR</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={styles.demoButton}
+            onPress={handleDemoMode}
+          >
+            <Users size={16} color="#38BDF8" />
+            <Text style={styles.demoButtonText}>Explore in Offline / Demo Mode</Text>
           </TouchableOpacity>
         </View>
 
@@ -288,6 +328,58 @@ const styles = StyleSheet.create({
   footerLink: {
     color: '#3B82F6',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  optionalBadge: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
+    backgroundColor: '#334155',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  helpText: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+    gap: 10,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#334155',
+  },
+  dividerText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  demoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#0F172A',
+    paddingVertical: 13,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+  },
+  demoButtonText: {
+    color: '#38BDF8',
+    fontSize: 15,
     fontWeight: '600',
   },
 });
