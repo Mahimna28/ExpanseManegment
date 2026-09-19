@@ -7,12 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "expenseshare",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0F172A"
-    },
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.private.expenseshare",
@@ -42,7 +37,8 @@
       "expo-secure-store",
       "expo-local-authentication",
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      "expo-status-bar"
     ]
   }
 }
