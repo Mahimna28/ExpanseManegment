@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,28 +10,64 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { GroupsRepo } from '../../src/repositories/groups.repo';
+import { ExpensesRepo } from '../../src/repositories/expenses.repo';
+import { SettlementsRepo } from '../../src/repositories/settlements.repo';
+import { calculateNetBalances } from '../../src/engine/debt-graph';
+import { paiseToRupees } from '../../src/engine/currency';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useSyncStore } from '../../src/stores/sync.store';
 import { triggerSync } from '../../src/sync/engine';
 import { SyncStatusChip } from '../../src/components/sync/SyncStatusChip';
-import { Users, Plus, KeyRound, Settings, ChevronRight } from 'lucide-react-native';
+import {
+  Avatar,
+  EmptyState,
+  SectionHeader,
+  PrimaryButton,
+  SecondaryButton,
+} from '../../src/components/ui';
+import { colors, spacing, typography, radii } from '../../src/theme';
+import { Plus, KeyRound, Settings, ChevronRight, Users } from 'lucide-react-native';
 import type { Group } from '../../src/types/models';
+
+interface GroupWithMeta {
+  group: Group;
+  memberCount: number;
+  myNetPaise: number;
+}
 
 export default function GroupsScreen() {
   const router = useRouter();
+  const userId = useAuthStore((s) => s.userId);
   const profile = useAuthStore((s) => s.profile);
   const dbVersion = useSyncStore((s) => s.dbVersion);
-  const [groups, setGroups] = useState<Group[]>([]);
+
+  const [groupsWithMeta, setGroupsWithMeta] = useState<GroupWithMeta[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadGroups = useCallback(() => {
     try {
-      const active = GroupsRepo.listActiveGroups();
-      setGroups(active);
+      const activeGroups = GroupsRepo.listActiveGroups();
+      const enriched: GroupWithMeta[] = activeGroups.map((group) => {
+        const members = GroupsRepo.listMembers(group.id);
+        let myNet = 0;
+        if (userId) {
+          const memberIds = members.map((m) => m.user_id);
+          const expenses = ExpensesRepo.listExpenses(group.id, false);
+          const settlements = SettlementsRepo.listSettlements(group.id, false);
+          const netMap = calculateNetBalances(memberIds, expenses, settlements);
+          myNet = netMap.get(userId) ?? 0;
+        }
+        return {
+          group,
+          memberCount: members.length,
+          myNetPaise: myNet,
+        };
+      });
+      setGroupsWithMeta(enriched);
     } catch {
-      setGroups([]);
+      setGroupsWithMeta([]);
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     loadGroups();
@@ -44,94 +80,167 @@ export default function GroupsScreen() {
     setRefreshing(false);
   };
 
-  const renderGroupItem = ({ item }: { item: Group }) => (
-    <TouchableOpacity
-      style={styles.groupCard}
-      onPress={() => router.push(`/(app)/group/${item.id}` as any)}
-    >
-      <View style={styles.groupIconWrapper}>
-        <Users size={22} color="#3B82F6" />
-      </View>
-      <View style={styles.groupInfo}>
-        <Text style={styles.groupName}>{item.name}</Text>
-        {item.description ? (
-          <Text style={styles.groupDescription} numberOfLines={1}>
-            {item.description}
+  // Overall aggregate balance calculation
+  const totalNetPaise = useMemo(() => {
+    return groupsWithMeta.reduce((sum, item) => sum + item.myNetPaise, 0);
+  }, [groupsWithMeta]);
+
+  const renderGroupRow = ({ item }: { item: GroupWithMeta }) => {
+    const { group, memberCount, myNetPaise } = item;
+    const isPositive = myNetPaise > 0;
+    const isNegative = myNetPaise < 0;
+
+    let balanceText = 'Settled';
+    let balanceColor = colors.moneyNeutral;
+
+    if (isPositive) {
+      balanceText = `+${paiseToRupees(myNetPaise)}`;
+      balanceColor = colors.moneyPositive;
+    } else if (isNegative) {
+      balanceText = `-${paiseToRupees(Math.abs(myNetPaise))}`;
+      balanceColor = colors.moneyNegative;
+    }
+
+    const memberLabel = memberCount === 1 ? '1 member' : `${memberCount} members`;
+
+    return (
+      <TouchableOpacity
+        style={styles.groupRow}
+        onPress={() => router.push(`/(app)/group/${group.id}` as any)}
+        activeOpacity={0.7}
+      >
+        <Avatar name={group.name} size={44} />
+
+        <View style={styles.groupInfo}>
+          <Text style={styles.groupName} numberOfLines={1}>
+            {group.name}
           </Text>
-        ) : null}
-        <Text style={styles.groupCode}>Code: {item.invite_code}</Text>
-      </View>
-      <ChevronRight size={20} color="#64748B" />
-    </TouchableOpacity>
-  );
+          <Text style={styles.groupMeta} numberOfLines={1}>
+            {memberLabel}
+            {group.description ? ` • ${group.description}` : ''}
+          </Text>
+        </View>
+
+        <View style={styles.balanceCol}>
+          <Text style={[styles.balanceAmount, { color: balanceColor }]}>
+            {balanceText}
+          </Text>
+          <Text style={styles.balanceStatus}>
+            {isPositive ? 'you are owed' : isNegative ? 'you owe' : 'all settled'}
+          </Text>
+        </View>
+
+        <ChevronRight size={18} color={colors.textDim} style={styles.chevron} />
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Top Header */}
-        <View style={styles.topBar}>
-          <View>
-            <Text style={styles.welcomeText}>Hello,</Text>
-            <Text style={styles.userName}>{profile?.display_name || 'Member'}</Text>
+        <View style={styles.topHeader}>
+          <View style={styles.profileSection}>
+            <Avatar name={profile?.display_name || 'Member'} size={38} />
+            <View style={styles.welcomeTextGroup}>
+              <Text style={styles.appName}>ExpenseShare</Text>
+              <Text style={styles.userName} numberOfLines={1}>
+                {profile?.display_name || 'Member'}
+              </Text>
+            </View>
           </View>
-          <View style={styles.topBarActions}>
+
+          <View style={styles.headerActions}>
             <SyncStatusChip />
             <TouchableOpacity
-              style={styles.iconButton}
+              style={styles.iconBtn}
               onPress={() => router.push('/(app)/settings')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Settings size={20} color="#94A3B8" />
+              <Settings size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Quick action buttons */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.createButton]}
-            onPress={() => router.push('/(app)/new-group')}
-          >
-            <Plus size={18} color="#FFFFFF" />
-            <Text style={styles.createButtonText}>Create Group</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, styles.joinButton]}
-            onPress={() => router.push('/(app)/join-group')}
-          >
-            <KeyRound size={18} color="#93C5FD" />
-            <Text style={styles.joinButtonText}>Join with Code</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Section title */}
-        <Text style={styles.sectionTitle}>Your Groups ({groups.length})</Text>
-
-        {/* Groups List */}
-        <FlatList
-          data={groups}
-          keyExtractor={(item) => item.id}
-          renderItem={renderGroupItem}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#3B82F6"
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconCircle}>
-                <Users size={36} color="#475569" />
-              </View>
-              <Text style={styles.emptyTitle}>No groups yet</Text>
-              <Text style={styles.emptySubtitle}>
-                Create a new group for your trip or outing, or enter an invite code to join one.
+        {/* Global Net Balance Card */}
+        {groupsWithMeta.length > 0 && (
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryContent}>
+              <Text style={styles.summaryLabel}>Total Net Balance</Text>
+              <Text
+                style={[
+                  styles.summaryAmount,
+                  {
+                    color:
+                      totalNetPaise > 0
+                        ? colors.moneyPositive
+                        : totalNetPaise < 0
+                        ? colors.moneyNegative
+                        : colors.text,
+                  },
+                ]}
+              >
+                {totalNetPaise === 0
+                  ? '₹0.00'
+                  : totalNetPaise > 0
+                  ? `+${paiseToRupees(totalNetPaise)}`
+                  : `-${paiseToRupees(Math.abs(totalNetPaise))}`}
+              </Text>
+              <Text style={styles.summarySub}>
+                {totalNetPaise > 0
+                  ? 'You are owed overall across groups'
+                  : totalNetPaise < 0
+                  ? 'You owe overall across groups'
+                  : 'All group balances are settled'}
               </Text>
             </View>
-          }
-        />
+          </View>
+        )}
+
+        {/* Action Buttons Row */}
+        <View style={styles.actionRow}>
+          <PrimaryButton
+            label="New Group"
+            icon={<Plus size={18} color="#FFFFFF" />}
+            onPress={() => router.push('/(app)/new-group')}
+            style={styles.actionBtn}
+          />
+          <SecondaryButton
+            label="Join with Code"
+            icon={<KeyRound size={18} color={colors.primary} />}
+            onPress={() => router.push('/(app)/join-group')}
+            style={styles.actionBtn}
+          />
+        </View>
+
+        {/* Groups List */}
+        <View style={styles.listContainer}>
+          <SectionHeader
+            title="Your Groups"
+            count={groupsWithMeta.length}
+          />
+
+          <FlatList
+            data={groupsWithMeta}
+            keyExtractor={(item) => item.group.id}
+            renderItem={renderGroupRow}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.primary}
+              />
+            }
+            ListEmptyComponent={
+              <EmptyState
+                icon={<Users size={28} color={colors.textMuted} />}
+                title="No groups yet"
+                description="Create a group for a trip, house, or project, or enter an invite code to join one."
+              />
+            }
+          />
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -140,153 +249,132 @@ export default function GroupsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: colors.background,
   },
   container: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    backgroundColor: colors.background,
   },
-  topBar: {
+  topHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  welcomeText: {
-    fontSize: 13,
-    color: '#94A3B8',
-    fontWeight: '500',
-  },
-  userName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#F8FAFC',
-  },
-  topBarActions: {
+  profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: spacing.md,
   },
-  iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#1E293B',
+  welcomeTextGroup: {
+    gap: 1,
+  },
+  appName: {
+    ...typography.caption,
+    color: colors.primary,
+  },
+  userName: {
+    ...typography.largeTitle,
+    fontSize: 18,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
+  },
+  summaryCard: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  summaryContent: {
+    gap: 2,
+  },
+  summaryLabel: {
+    ...typography.caption,
+  },
+  summaryAmount: {
+    ...typography.display,
+    fontSize: 26,
+  },
+  summarySub: {
+    ...typography.secondary,
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.md,
   },
-  actionButton: {
+  actionBtn: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 13,
-    borderRadius: 12,
   },
-  createButton: {
-    backgroundColor: '#2563EB',
-  },
-  createButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  joinButton: {
-    backgroundColor: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#3B82F6',
-  },
-  joinButtonText: {
-    color: '#93C5FD',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
+  listContainer: {
+    flex: 1,
+    marginTop: spacing.sm,
   },
   listContent: {
-    paddingBottom: 24,
-    flexGrow: 1,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxxl,
   },
-  groupCard: {
+  groupRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 10,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  groupIconWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#0F172A',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
   },
   groupInfo: {
     flex: 1,
+    marginLeft: spacing.md,
+    gap: 2,
   },
   groupName: {
+    ...typography.bodySemibold,
     fontSize: 16,
-    fontWeight: '600',
-    color: '#F8FAFC',
-    marginBottom: 2,
   },
-  groupDescription: {
-    fontSize: 13,
-    color: '#94A3B8',
-    marginBottom: 3,
+  groupMeta: {
+    ...typography.secondary,
+    color: colors.textMuted,
   },
-  groupCode: {
-    fontSize: 12,
-    color: '#3B82F6',
-    fontWeight: '500',
+  balanceCol: {
+    alignItems: 'flex-end',
+    marginRight: spacing.xs,
+    gap: 1,
   },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 20,
+  balanceAmount: {
+    ...typography.amount,
   },
-  emptyIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#1E293B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+  balanceStatus: {
+    ...typography.caption,
+    fontSize: 10,
+    textTransform: 'lowercase',
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#F8FAFC',
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 20,
+  chevron: {
+    marginLeft: spacing.xs,
   },
 });

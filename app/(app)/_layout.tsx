@@ -1,14 +1,16 @@
 import React from 'react';
 import { Stack } from 'expo-router';
+import { colors } from '../../src/theme';
 
 export default function AppLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: '#0F172A' },
-        headerTintColor: '#F8FAFC',
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '600', fontSize: 17 },
-        contentStyle: { backgroundColor: '#0F172A' },
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: colors.background },
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
