@@ -39,25 +39,29 @@ export default function NewGroupScreen() {
 
     setLoading(true);
     try {
-      let groupId: string;
-      let inviteCode: string;
+      const { data, error: rpcErr } = await supabase.rpc('create_group', {
+        p_name: name.trim(),
+        p_description: description.trim() || null,
+      });
 
-      try {
-        const { data, error: rpcErr } = await supabase.rpc('create_group', {
-          p_name: name.trim(),
-          p_description: description.trim() || null,
-        });
-
-        if (rpcErr) throw rpcErr;
-        groupId = data.group_id;
-        inviteCode = data.invite_code;
-      } catch (networkErr) {
-        console.warn('Backend create_group failed, creating offline group:', networkErr);
-        groupId = Crypto.randomUUID();
-        inviteCode = 'GRP' + Math.random().toString(36).substring(2, 7).toUpperCase();
+      if (rpcErr) {
+        if (rpcErr.code === 'P0003' || rpcErr.message.includes('invalid_group_name')) {
+          throw new Error('Group name must be between 1 and 80 characters.');
+        }
+        if (rpcErr.code === 'P0001' || rpcErr.message.includes('not_authenticated')) {
+          throw new Error('Your session has expired. Please sign in again.');
+        }
+        throw rpcErr;
       }
 
-      // 2. Cache in local SQLite
+      const groupId = data?.group_id;
+      const inviteCode = data?.invite_code;
+
+      if (!groupId || !inviteCode) {
+        throw new Error('Server did not return group information.');
+      }
+
+      // Cache the verified group in local SQLite
       const now = new Date().toISOString();
       GroupsRepo.upsertGroup({
         id: groupId,
@@ -84,8 +88,26 @@ export default function NewGroupScreen() {
       useSyncStore.getState().incrementDbVersion();
       router.replace(`/(app)/group/${groupId}` as any);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not create group';
-      Alert.alert('Error', msg);
+      let msg = 'Could not create group.';
+      if (err instanceof Error) {
+        msg = err.message;
+      } else if (typeof err === 'object' && err !== null && 'message' in err) {
+        msg = String((err as any).message);
+      }
+
+      // Network / offline specific guidance
+      if (
+        msg.toLowerCase().includes('network') ||
+        msg.toLowerCase().includes('fetch') ||
+        msg.toLowerCase().includes('failed to fetch') ||
+        msg.toLowerCase().includes('connection')
+      ) {
+        msg =
+          'Internet connection required: Creating a new shared group requires an active internet connection so an official invite code can be registered. Please check your connection and try again.';
+      }
+
+      setError(msg);
+      Alert.alert('Group Creation Failed', msg);
     } finally {
       setLoading(false);
     }

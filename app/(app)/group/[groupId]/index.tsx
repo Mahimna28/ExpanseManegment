@@ -5,9 +5,11 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Alert,
+  Platform,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { GroupsRepo } from '../../../../src/repositories/groups.repo';
 import { useGroupBalances } from '../../../../src/hooks/useGroupBalances';
@@ -18,31 +20,39 @@ import { SyncStatusChip } from '../../../../src/components/sync/SyncStatusChip';
 import {
   Avatar,
   EmptyState,
-  ExpenseRow,
-  BalanceBanner,
+  ExpenseCard,
+  DebtFlowCard,
+  NetBalanceHero,
   SegmentedControl,
+  FloatingDock,
   PrimaryButton,
 } from '../../../../src/components/ui';
-import { colors, spacing, typography, radii } from '../../../../src/theme';
+import { colors, spacing, typography, radii, shadows } from '../../../../src/theme';
 import {
   ArrowLeft,
   Share2,
   Users,
   Plus,
-  ArrowRight,
   Receipt,
   CheckCircle2,
 } from 'lucide-react-native';
 import type { Expense } from '../../../../src/types/models';
 
-type GroupTab = 'expenses' | 'balances';
+type GroupTab = 'activity' | 'balances';
 
 export default function GroupDetailScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const router = useRouter();
   const currentUserId = useAuthStore((s) => s.userId);
 
-  const [activeTab, setActiveTab] = useState<GroupTab>('expenses');
+  const [activeTab, setActiveTab] = useState<GroupTab>('activity');
+
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0,
+  );
+  const bottomInset = Math.max(insets.bottom, 12);
 
   const group = GroupsRepo.getGroupById(groupId);
   const members = GroupsRepo.listMembers(groupId);
@@ -59,6 +69,20 @@ export default function GroupDetailScreen() {
 
   const myNet = currentUserId ? (netMap.get(currentUserId) ?? 0) : 0;
 
+  // Breakdown for current user in this group
+  const { owedToMe, iOwe } = useMemo(() => {
+    let owed = 0;
+    let owe = 0;
+    suggestions.forEach((s) => {
+      if (s.to_user_id === currentUserId) {
+        owed += s.amount_paise;
+      } else if (s.from_user_id === currentUserId) {
+        owe += s.amount_paise;
+      }
+    });
+    return { owedToMe: owed, iOwe: owe };
+  }, [suggestions, currentUserId]);
+
   const handleShareInvite = () => {
     if (!group) return;
     Alert.alert(
@@ -70,35 +94,33 @@ export default function GroupDetailScreen() {
 
   if (!group) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <View style={[styles.container, { paddingTop: topInset + spacing.lg }]}>
         <View style={styles.notFoundContainer}>
           <Text style={styles.notFoundText}>Group not found</Text>
           <TouchableOpacity onPress={() => router.replace('/(app)')}>
             <Text style={styles.backLink}>Return to Groups</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
-  // Pre-compute user's share for each expense for the clean ExpenseRow
   const renderExpenseItem = ({ item }: { item: Expense }) => {
     const payerName = memberNameMap.get(item.paid_by) || 'Member';
     const isCurrentUserPayer = item.paid_by === currentUserId;
 
-    // Determine user's split from local_splits if available, or approximate equal split
+    // Calculate personal split share
     let mySharePaise: number | undefined;
     if (item.splits && item.splits.length > 0) {
       const split = item.splits.find((s) => s.participant_id === currentUserId);
       mySharePaise = split ? split.owed_paise : 0;
     } else {
-      // Fallback equal estimation
-      const memberCount = Math.max(members.length, 1);
-      mySharePaise = Math.round(item.total_paise / memberCount);
+      const count = Math.max(members.length, 1);
+      mySharePaise = Math.round(item.total_paise / count);
     }
 
     return (
-      <ExpenseRow
+      <ExpenseCard
         expense={item}
         payerName={payerName}
         isCurrentUserPayer={isCurrentUserPayer}
@@ -109,168 +131,162 @@ export default function GroupDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* Top Header */}
-        <View style={styles.topHeader}>
+    <View style={styles.container}>
+      {/* Top App Bar — extends behind status bar */}
+      <View style={[styles.topBar, { paddingTop: topInset + 6 }]}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => router.replace('/(app)')}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel="Back to Groups"
+          accessibilityRole="button"
+        >
+          <ArrowLeft size={22} color={colors.text} />
+        </TouchableOpacity>
+
+        <View style={styles.titleCol}>
+          <Text style={styles.groupTitle} numberOfLines={1}>
+            {group.name}
+          </Text>
+          <Text style={styles.memberCountSub}>
+            {members.length === 1 ? '1 member' : `${members.length} members`}
+          </Text>
+        </View>
+
+        <View style={styles.topActions}>
           <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => router.replace('/(app)')}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={styles.iconBtn}
+            onPress={handleShareInvite}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Share invite code"
+            accessibilityRole="button"
           >
-            <ArrowLeft size={22} color={colors.text} />
+            <Share2 size={17} color={colors.text} />
           </TouchableOpacity>
 
-          <View style={styles.titleWrapper}>
-            <Text style={styles.groupTitle} numberOfLines={1}>
-              {group.name}
-            </Text>
-            <Text style={styles.memberSubtitle}>
-              {members.length === 1 ? '1 member' : `${members.length} members`}
-            </Text>
-          </View>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => router.push(`/(app)/group/${groupId}/members` as any)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Group members"
+            accessibilityRole="button"
+          >
+            <Users size={17} color={colors.text} />
+          </TouchableOpacity>
 
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={handleShareInvite}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Share2 size={18} color={colors.text} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => router.push(`/(app)/group/${groupId}/members` as any)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Users size={18} color={colors.text} />
-            </TouchableOpacity>
-            <SyncStatusChip />
-          </View>
+          <SyncStatusChip />
         </View>
+      </View>
 
-        {/* Compact Group Balance Banner */}
-        <View style={styles.bannerWrapper}>
-          <BalanceBanner
-            netPaise={myNet}
-            onPress={() => setActiveTab('balances')}
-          />
-        </View>
+      {/* Dynamic Financial Hero Card */}
+      <View style={styles.heroSection}>
+        <NetBalanceHero
+          totalNetPaise={myNet}
+          owedToYouPaise={owedToMe}
+          youOwePaise={iOwe}
+          title="Your Group Standing"
+        />
+      </View>
 
-        {/* Tab Switcher (Expenses vs Balances) */}
-        <View style={styles.tabsWrapper}>
-          <SegmentedControl<GroupTab>
-            tabs={[
-              { id: 'expenses', label: 'Expenses', badgeCount: expenses.length },
-              { id: 'balances', label: 'Balances' },
-            ]}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-          />
-        </View>
+      {/* Capsule Tab Switcher */}
+      <View style={styles.tabsSection}>
+        <SegmentedControl<GroupTab>
+          tabs={[
+            { id: 'activity', label: 'Activity', badgeCount: expenses.length },
+            { id: 'balances', label: 'Who Owes Who', badgeCount: suggestions.length },
+          ]}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
+      </View>
 
-        {/* TAB 1: EXPENSES LIST */}
-        {activeTab === 'expenses' ? (
-          <View style={styles.feedContainer}>
-            <FlatList
-              data={expenses}
-              keyExtractor={(item) => item.id}
-              renderItem={renderExpenseItem}
-              contentContainerStyle={styles.expensesListContent}
-              ListEmptyComponent={
-                <EmptyState
-                  icon={<Receipt size={28} color={colors.textMuted} />}
-                  title="No expenses yet"
-                  description="Tap 'Add Expense' below to log your first shared cost."
-                />
-              }
-            />
-
-            {/* Docked Primary Add Expense CTA */}
-            <View style={styles.bottomBar}>
-              <PrimaryButton
-                label="Add Expense"
-                icon={<Plus size={18} color="#FFFFFF" />}
-                onPress={() => router.push(`/(app)/group/${groupId}/new-expense` as any)}
-              />
-            </View>
-          </View>
-        ) : (
-          /* TAB 2: BALANCES & DEBT GRAPH */
+      {/* TAB 1: ACTIVITY (EXPENSES FEED) */}
+      {activeTab === 'activity' ? (
+        <View style={styles.tabContentContainer}>
           <FlatList
-            data={balances}
-            keyExtractor={(item) => item.user_id}
-            contentContainerStyle={styles.balancesContent}
+            data={expenses}
+            keyExtractor={(item) => item.id}
+            renderItem={renderExpenseItem}
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: 84 + bottomInset },
+            ]}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <EmptyState
+                  icon={<Receipt size={22} color={colors.textMuted} />}
+                  title="No expenses yet"
+                  description="Add your first group expense to start splitting bills automatically."
+                />
+              </View>
+            }
+          />
+
+          {/* Floating Thumb Dock for Adding Expense */}
+          <FloatingDock>
+            <PrimaryButton
+              label="Add Expense"
+              icon={<Plus size={18} color="#FFFFFF" />}
+              onPress={() => router.push(`/(app)/group/${groupId}/new-expense` as any)}
+              style={styles.dockPrimaryBtn}
+            />
+          </FloatingDock>
+        </View>
+      ) : (
+        /* TAB 2: WHO OWES WHO (BALANCES & DEBT FLOWS) */
+        <FlatList
+          data={balances}
+          keyExtractor={(item) => item.user_id}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: 84 + bottomInset },
+          ]}
             ListHeaderComponent={
-              <>
-                {/* Simplified Transfer Suggestions */}
-                <View style={styles.sectionContainer}>
-                  <Text style={styles.sectionHeading}>Suggested Transfers</Text>
-                  <Text style={styles.sectionSubtitle}>
-                    Fewest transfers to settle all group balances.
-                  </Text>
+              <View style={styles.balancesHeaderSection}>
+                {/* Visual Debt Transfers */}
+                <Text style={styles.sectionHeaderTitle}>Simplified Transfers</Text>
+                <Text style={styles.sectionHeaderSub}>
+                  Fewest transfers to settle all group balances completely.
+                </Text>
 
-                  <View style={styles.card}>
-                    {suggestions.map((s, idx) => {
-                      const fromName = memberNameMap.get(s.from_user_id) || 'Member';
-                      const toName = memberNameMap.get(s.to_user_id) || 'Member';
-                      const isMeFrom = s.from_user_id === currentUserId;
-                      const isMeTo = s.to_user_id === currentUserId;
+                {suggestions.map((s, idx) => {
+                  const fromName = memberNameMap.get(s.from_user_id) || 'Member';
+                  const toName = memberNameMap.get(s.to_user_id) || 'Member';
+                  const isMeFrom = s.from_user_id === currentUserId;
+                  const isMeTo = s.to_user_id === currentUserId;
 
-                      return (
-                        <View key={idx} style={styles.transferRow}>
-                          <View style={styles.transferLeft}>
-                            <Avatar name={fromName} size={32} />
-                            <ArrowRight size={14} color={colors.textDim} />
-                            <Avatar name={toName} size={32} />
-                            <View style={styles.transferTextCol}>
-                              <Text style={styles.transferTitle} numberOfLines={1}>
-                                <Text style={{ fontWeight: '700' }}>
-                                  {isMeFrom ? 'You' : fromName}
-                                </Text>{' '}
-                                pays{' '}
-                                <Text style={{ fontWeight: '700' }}>
-                                  {isMeTo ? 'You' : toName}
-                                </Text>
-                              </Text>
-                            </View>
-                          </View>
+                  return (
+                    <DebtFlowCard
+                      key={idx}
+                      fromName={fromName}
+                      toName={toName}
+                      amountPaise={s.amount_paise}
+                      isMeFrom={isMeFrom}
+                      isMeTo={isMeTo}
+                      onSettle={() =>
+                        router.push(`/(app)/group/${groupId}/new-settlement` as any)
+                      }
+                    />
+                  );
+                })}
 
-                          <View style={styles.transferRight}>
-                            <Text style={styles.transferAmount}>
-                              {paiseToRupees(s.amount_paise)}
-                            </Text>
-                            {(isMeFrom || isMeTo) && (
-                              <TouchableOpacity
-                                style={styles.settleButton}
-                                onPress={() =>
-                                  router.push(`/(app)/group/${groupId}/new-settlement` as any)
-                                }
-                              >
-                                <Text style={styles.settleButtonText}>Settle</Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                        </View>
-                      );
-                    })}
-
-                    {suggestions.length === 0 && (
-                      <View style={styles.allSettledContainer}>
-                        <CheckCircle2 size={24} color={colors.moneyPositive} />
-                        <Text style={styles.allSettledText}>
-                          All group balances are settled!
-                        </Text>
-                      </View>
-                    )}
+                {suggestions.length === 0 && (
+                  <View style={[styles.allSettledCard, shadows.card]}>
+                    <CheckCircle2 size={28} color={colors.moneyPositive} />
+                    <Text style={styles.allSettledTitle}>
+                      All balances are settled!
+                    </Text>
+                    <Text style={styles.allSettledSub}>
+                      No one in this group owes anything right now.
+                    </Text>
                   </View>
-                </View>
+                )}
 
-                {/* Member Net Balances */}
-                <View style={styles.sectionContainer}>
-                  <Text style={styles.sectionHeading}>All Member Standings</Text>
-                </View>
-              </>
+                {/* Individual Member Standings */}
+                <Text style={[styles.sectionHeaderTitle, { marginTop: spacing.lg }]}>
+                  Member Standings
+                </Text>
+              </View>
             }
             renderItem={({ item }) => {
               const name = memberNameMap.get(item.user_id) || 'Member';
@@ -278,51 +294,45 @@ export default function GroupDetailScreen() {
               const isPositive = item.net_paise > 0;
               const isNegative = item.net_paise < 0;
 
-              let text = 'Settled up';
-              let textColor = colors.moneyNeutral;
+              let statusLabel = 'Settled';
+              let amountText = '₹0.00';
+              let amountColor = colors.moneyNeutral;
+              let badgeBg = colors.moneyNeutralBg;
 
               if (isPositive) {
-                text = `is owed ${paiseToRupees(item.net_paise)}`;
-                textColor = colors.moneyPositive;
+                statusLabel = isCurrentUser ? 'You are owed' : `${name} is owed`;
+                amountText = `+${paiseToRupees(item.net_paise)}`;
+                amountColor = colors.moneyPositive;
+                badgeBg = colors.moneyPositiveBg;
               } else if (isNegative) {
-                text = `owes ${paiseToRupees(Math.abs(item.net_paise))}`;
-                textColor = colors.moneyNegative;
+                statusLabel = isCurrentUser ? 'You owe' : `${name} owes`;
+                amountText = `-${paiseToRupees(Math.abs(item.net_paise))}`;
+                amountColor = colors.moneyNegative;
+                badgeBg = colors.moneyNegativeBg;
               }
 
               return (
-                <View style={styles.memberBalanceRow}>
-                  <View style={styles.memberLeft}>
-                    <Avatar name={name} size={36} />
-                    <View>
-                      <Text style={styles.memberName}>
-                        {name} {isCurrentUser && <Text style={styles.youTag}>(You)</Text>}
-                      </Text>
-                      <Text style={[styles.memberStanding, { color: textColor }]}>
-                        {isCurrentUser
-                          ? isPositive
-                            ? `You are owed ${paiseToRupees(item.net_paise)}`
-                            : isNegative
-                            ? `You owe ${paiseToRupees(Math.abs(item.net_paise))}`
-                            : 'You are all settled'
-                          : `${name} ${text}`}
-                      </Text>
-                    </View>
+                <View style={[styles.memberCard, shadows.subtle]}>
+                  <Avatar name={name} size={38} />
+                  <View style={styles.memberInfo}>
+                    <Text style={styles.memberName} numberOfLines={1}>
+                      {name} {isCurrentUser && <Text style={styles.youTag}>(You)</Text>}
+                    </Text>
+                    <Text style={styles.memberStandingSub}>{statusLabel}</Text>
                   </View>
 
-                  <Text style={[styles.memberPaiseValue, { color: textColor }]}>
-                    {item.net_paise === 0
-                      ? '₹0.00'
-                      : isPositive
-                      ? `+${paiseToRupees(item.net_paise)}`
-                      : `-${paiseToRupees(Math.abs(item.net_paise))}`}
-                  </Text>
+                  <View style={[styles.memberAmountPill, { backgroundColor: badgeBg }]}>
+                    <Text style={[styles.memberAmountText, { color: amountColor }]}>
+                      {amountText}
+                    </Text>
+                  </View>
                 </View>
               );
             }}
             ListFooterComponent={
-              <View style={styles.settleActionFooter}>
+              <View style={styles.footerActionSection}>
                 <PrimaryButton
-                  label="Record Settlement"
+                  label="Record a Settlement"
                   onPress={() =>
                     router.push(`/(app)/group/${groupId}/new-settlement` as any)
                   }
@@ -331,48 +341,49 @@ export default function GroupDetailScreen() {
             }
           />
         )}
-      </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  topHeader: {
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingBottom: spacing.sm,
     backgroundColor: colors.surface,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   backBtn: {
-    padding: spacing.xs,
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginLeft: -spacing.xs,
   },
-  titleWrapper: {
+  titleCol: {
     flex: 1,
     marginLeft: spacing.xs,
-    gap: 1,
+    justifyContent: 'center',
   },
   groupTitle: {
-    ...typography.largeTitle,
-    fontSize: 18,
+    ...typography.title,
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
   },
-  memberSubtitle: {
+  memberCountSub: {
     ...typography.secondary,
     fontSize: 12,
+    color: colors.textMuted,
   },
-  headerActions: {
+  topActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -387,154 +398,118 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  bannerWrapper: {
+  heroSection: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
   },
-  tabsWrapper: {
+  tabsSection: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
   },
-  feedContainer: {
+  tabContentContainer: {
     flex: 1,
   },
-  expensesListContent: {
-    backgroundColor: colors.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    paddingBottom: 90,
-  },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: colors.surface,
+  listContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 4,
+    paddingTop: spacing.xs,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
   },
-  balancesContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.huge,
-  },
-  sectionContainer: {
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  sectionHeading: {
-    ...typography.caption,
-  },
-  sectionSubtitle: {
-    ...typography.secondary,
-    fontSize: 12,
-    marginTop: 2,
-    marginBottom: spacing.sm,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  transferRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  transferLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  transferTextCol: {
-    marginLeft: spacing.xs,
-    flex: 1,
-  },
-  transferTitle: {
-    ...typography.body,
-    fontSize: 14,
-  },
-  transferRight: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  transferAmount: {
-    ...typography.amount,
-    color: colors.text,
-    fontSize: 15,
-  },
-  settleButton: {
-    backgroundColor: colors.primarySubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.sm,
-  },
-  settleButtonText: {
-    ...typography.secondarySemibold,
-    color: colors.primary,
-    fontSize: 12,
-  },
-  allSettledContainer: {
-    flexDirection: 'row',
+  emptyContainer: {
+    paddingVertical: spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.xl,
   },
-  allSettledText: {
-    ...typography.bodySemibold,
-    color: colors.moneyPositive,
+  dockPrimaryBtn: {
+    flex: 1,
+    borderRadius: radii.pill,
+    height: 46,
   },
-  memberBalanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  balancesHeaderSection: {
+    marginBottom: spacing.xs,
+  },
+  sectionHeaderTitle: {
+    ...typography.caption,
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  sectionHeaderSub: {
+    ...typography.secondary,
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: spacing.md,
+  },
+  allSettledCard: {
     backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.sm,
+    gap: spacing.xs,
+    marginBottom: spacing.md,
   },
-  memberLeft: {
+  allSettledTitle: {
+    ...typography.title,
+    fontSize: 16,
+    color: colors.moneyPositive,
+  },
+  allSettledSub: {
+    ...typography.secondary,
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  memberCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  memberInfo: {
     flex: 1,
+    marginLeft: spacing.md,
+    gap: 2,
   },
   memberName: {
     ...typography.bodySemibold,
+    color: colors.text,
   },
   youTag: {
     ...typography.secondary,
     color: colors.textMuted,
+    fontSize: 12,
   },
-  memberStanding: {
+  memberStandingSub: {
     ...typography.secondary,
     fontSize: 12,
-    marginTop: 1,
+    color: colors.textMuted,
   },
-  memberPaiseValue: {
+  memberAmountPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+  },
+  memberAmountText: {
     ...typography.amount,
-    fontSize: 15,
+    fontSize: 13,
   },
-  settleActionFooter: {
+  footerActionSection: {
     marginTop: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   notFoundContainer: {
     flex: 1,

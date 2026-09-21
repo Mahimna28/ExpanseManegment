@@ -2,68 +2,108 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Share,
+  Platform,
+  StatusBar,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import * as Crypto from 'expo-crypto';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Linking from 'expo-linking';
 import { GroupsRepo } from '../../../../src/repositories/groups.repo';
 import { useAuthStore } from '../../../../src/stores/auth.store';
 import { useSyncStore } from '../../../../src/stores/sync.store';
 import { supabase } from '../../../../src/services/supabase';
 import { triggerSync } from '../../../../src/sync/engine';
-import { Share2, UserX, Crown, Shield, Plus } from 'lucide-react-native';
+import {
+  Avatar,
+  AppHeader,
+  PrimaryButton,
+  SecondaryButton,
+} from '../../../../src/components/ui';
+import { colors, spacing, typography, radii, shadows } from '../../../../src/theme';
+import {
+  Share2,
+  Copy,
+  Crown,
+  Shield,
+  UserX,
+  Check,
+  Users,
+} from 'lucide-react-native';
 
 export default function GroupMembersScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const currentUserId = useAuthStore((s) => s.userId);
   const dbVersion = useSyncStore((s) => s.dbVersion);
+
+  const [copied, setCopied] = useState(false);
 
   const group = GroupsRepo.getGroupById(groupId);
   const members = GroupsRepo.listMembers(groupId);
 
-  const [newMemberName, setNewMemberName] = useState('');
-
-  const handleAddLocalMember = () => {
-    if (!newMemberName.trim()) {
-      Alert.alert('Validation Error', 'Please enter a name for the member');
-      return;
-    }
-    const now = new Date().toISOString();
-    const newUid = 'member-' + Math.random().toString(36).substring(2, 9);
-    GroupsRepo.upsertMember({
-      id: Crypto.randomUUID(),
-      group_id: groupId,
-      user_id: newUid,
-      role: 'member',
-      status: 'active',
-      display_name: newMemberName.trim(),
-      joined_at: now,
-      created_at: now,
-    });
-    setNewMemberName('');
-    useSyncStore.getState().incrementDbVersion();
-  };
-
   const currentMember = members.find((m) => m.user_id === currentUserId);
   const isOwnerOrAdmin = currentMember?.role === 'owner' || currentMember?.role === 'admin';
 
-  const handleShareInvite = () => {
+  const inviteCode = group?.invite_code || '';
+
+  // Generate shareable universal deep link
+  const getInviteLink = () => {
+    return Linking.createURL('/join-group', {
+      queryParams: { code: inviteCode },
+    });
+  };
+
+  const handleShareInvite = async () => {
     if (!group) return;
+    const inviteLink = getInviteLink();
+    try {
+      await Share.share({
+        title: `Join "${group.name}" on ExpenseShare`,
+        message: `Join our group "${group.name}" on ExpenseShare!\n\nInvite Code: ${inviteCode}\n\nOr open this link directly:\n${inviteLink}`,
+        url: inviteLink,
+      });
+    } catch (err: unknown) {
+      console.warn('Share dismissed or failed:', err);
+    }
+  };
+
+  const handleCopyCode = async () => {
+    if (!inviteCode) return;
+
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(inviteCode);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+        return;
+      } catch {
+        // Fallback below
+      }
+    }
+
+    // Native mobile: show confirmation alert with option to share
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
     Alert.alert(
       'Invite Code',
-      `Share this invite code with trusted members:\n\n${group.invite_code}`,
-      [{ text: 'OK' }],
+      `Code: ${inviteCode}\n\nShare this code with your friends to let them join "${group?.name || 'the group'}".`,
+      [
+        { text: 'Share', onPress: handleShareInvite },
+        { text: 'OK' },
+      ],
     );
   };
 
   const handleRevoke = (targetUserId: string, targetName: string) => {
     Alert.alert(
-      'Revoke Member',
-      `Are you sure you want to remove ${targetName} from the group? They will lose access to all group data upon next sync.`,
+      'Remove Member',
+      `Are you sure you want to remove ${targetName} from "${group?.name || 'this group'}"? They will lose access to all expenses.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -78,10 +118,10 @@ export default function GroupMembersScreen() {
 
               if (error) throw error;
 
-              Alert.alert('Success', `${targetName} has been removed.`);
+              Alert.alert('Member Removed', `${targetName} has been removed from the group.`);
               triggerSync().catch(console.warn);
             } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : 'Could not revoke member';
+              const msg = err instanceof Error ? err.message : 'Could not remove member';
               Alert.alert('Error', msg);
             }
           },
@@ -90,222 +130,382 @@ export default function GroupMembersScreen() {
     );
   };
 
+  if (!group) {
+    return (
+      <View style={styles.container}>
+        <AppHeader title="Members" showBack onBack={() => router.back()} />
+        <View style={styles.notFoundContainer}>
+          <Text style={styles.notFoundText}>Group not found</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Invite Code Box */}
-      <View style={styles.inviteCard}>
-        <View>
-          <Text style={styles.inviteTitle}>Group Invite Code</Text>
-          <Text style={styles.inviteCode}>{group?.invite_code}</Text>
-        </View>
-        <TouchableOpacity style={styles.shareButton} onPress={handleShareInvite}>
-          <Share2 size={16} color="#FFFFFF" />
-          <Text style={styles.shareButtonText}>Share</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={styles.container}>
+      {/* Top Header */}
+      <AppHeader
+        title={group.name}
+        subtitle={`${members.length} active ${members.length === 1 ? 'member' : 'members'}`}
+        showBack
+        onBack={() => router.back()}
+      />
 
-      {/* Quick Add Friend / Member */}
-      <View style={styles.addCard}>
-        <Text style={styles.addCardTitle}>Add Member to Group</Text>
-        <View style={styles.addInputRow}>
-          <TextInput
-            style={styles.addInput}
-            value={newMemberName}
-            onChangeText={setNewMemberName}
-            placeholder="Friend's Name (e.g. Rohan)"
-            placeholderTextColor="#64748B"
-          />
-          <TouchableOpacity style={styles.addButton} onPress={handleAddLocalMember}>
-            <Plus size={16} color="#FFFFFF" />
-            <Text style={styles.addButtonText}>Add</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Members List */}
-      <Text style={styles.sectionTitle}>Active Members ({members.length})</Text>
-      <View style={styles.listCard}>
-        {members.map((m) => {
-          const name = m.display_name || m.email?.split('@')[0] || 'Member';
-          const isCurrentUser = m.user_id === currentUserId;
-          const canRevoke =
-            isOwnerOrAdmin &&
-            !isCurrentUser &&
-            m.role !== 'owner' &&
-            !(currentMember?.role === 'admin' && m.role === 'admin');
-
-          return (
-            <View key={m.id} style={styles.memberRow}>
-              <View style={styles.memberInfo}>
-                <View style={styles.nameRow}>
-                  <Text style={styles.memberName}>{name}</Text>
-                  {isCurrentUser && <Text style={styles.youBadge}>(You)</Text>}
-                </View>
-                <View style={styles.roleRow}>
-                  {m.role === 'owner' && <Crown size={12} color="#F59E0B" />}
-                  {m.role === 'admin' && <Shield size={12} color="#3B82F6" />}
-                  <Text style={styles.roleText}>{m.role.toUpperCase()}</Text>
-                </View>
-              </View>
-
-              {canRevoke && (
-                <TouchableOpacity
-                  style={styles.revokeButton}
-                  onPress={() => handleRevoke(m.user_id, name)}
-                >
-                  <UserX size={16} color="#EF4444" />
-                </TouchableOpacity>
-              )}
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom, 24) + 16 },
+        ]}
+      >
+        {/* ── 1. HERO INVITE CARD (Code & Link Only) ── */}
+        <View style={[styles.inviteCard, shadows.card]}>
+          <View style={styles.inviteHeader}>
+            <View style={styles.inviteBadge}>
+              <Text style={styles.inviteBadgeText}>INVITE CODE & LINK</Text>
             </View>
-          );
-        })}
-      </View>
-    </ScrollView>
+            <View style={styles.activeTag}>
+              <View style={styles.activeDot} />
+              <Text style={styles.activeText}>Active</Text>
+            </View>
+          </View>
+
+          <Text style={styles.inviteDescription}>
+            Friends can join this group instantly using this 10-character code or by tapping your shareable invite link.
+          </Text>
+
+          {/* Monospace Code Pill */}
+          <View style={styles.codeContainer}>
+            <Text style={styles.codeText}>{inviteCode}</Text>
+          </View>
+
+          {/* Actions: Share Link & Copy */}
+          <View style={styles.inviteActions}>
+            <PrimaryButton
+              label="Share Invite Link"
+              icon={<Share2 size={16} color="#FFFFFF" />}
+              onPress={handleShareInvite}
+              style={styles.actionBtn}
+            />
+            <SecondaryButton
+              label={copied ? 'Code Copied!' : 'Copy Code'}
+              icon={
+                copied ? (
+                  <Check size={16} color={colors.moneyPositive} />
+                ) : (
+                  <Copy size={16} color={colors.primary} />
+                )
+              }
+              onPress={handleCopyCode}
+              style={styles.actionBtn}
+            />
+          </View>
+        </View>
+
+        {/* ── 2. ACTIVE MEMBERS ROSTER ── */}
+        <View style={styles.rosterHeader}>
+          <Text style={styles.rosterTitle}>
+            GROUP MEMBERS ({members.length})
+          </Text>
+          <Text style={styles.rosterSub}>
+            Only members with verified accounts can view and split expenses.
+          </Text>
+        </View>
+
+        <View style={[styles.membersCard, shadows.card]}>
+          {members.map((m, index) => {
+            const name = m.display_name || m.email?.split('@')[0] || 'Member';
+            const isCurrentUser = m.user_id === currentUserId;
+            const canRevoke =
+              isOwnerOrAdmin &&
+              !isCurrentUser &&
+              m.role !== 'owner' &&
+              !(currentMember?.role === 'admin' && m.role === 'admin');
+
+            const isLast = index === members.length - 1;
+
+            return (
+              <View
+                key={m.id}
+                style={[
+                  styles.memberRow,
+                  !isLast && styles.memberRowBorder,
+                ]}
+              >
+                {/* Member Avatar */}
+                <Avatar name={name} size={42} />
+
+                {/* Member Info */}
+                <View style={styles.memberInfo}>
+                  <View style={styles.nameRow}>
+                    <Text style={styles.memberName} numberOfLines={1}>
+                      {name}
+                    </Text>
+                    {isCurrentUser && (
+                      <View style={styles.youBadge}>
+                        <Text style={styles.youBadgeText}>You</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    {m.role === 'owner' ? (
+                      <View style={[styles.rolePill, { backgroundColor: '#FEF3C7' }]}>
+                        <Crown size={11} color="#D97706" />
+                        <Text style={[styles.roleText, { color: '#D97706' }]}>Owner</Text>
+                      </View>
+                    ) : m.role === 'admin' ? (
+                      <View style={[styles.rolePill, { backgroundColor: '#EEF2FF' }]}>
+                        <Shield size={11} color="#4F46E5" />
+                        <Text style={[styles.roleText, { color: '#4F46E5' }]}>Admin</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.rolePill, { backgroundColor: colors.surfaceSubtle }]}>
+                        <Text style={[styles.roleText, { color: colors.textMuted }]}>Member</Text>
+                      </View>
+                    )}
+
+                    {m.email ? (
+                      <Text style={styles.emailText} numberOfLines={1}>
+                        • {m.email}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+
+                {/* Revoke Action for Owner/Admin */}
+                {canRevoke ? (
+                  <TouchableOpacity
+                    style={styles.revokeBtn}
+                    onPress={() => handleRevoke(m.user_id, name)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel={`Remove ${name} from group`}
+                    accessibilityRole="button"
+                  >
+                    <UserX size={17} color={colors.danger} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+
+        {/* ── 3. HELPER NOTE ── */}
+        <View style={styles.helperBox}>
+          <Users size={16} color={colors.textMuted} />
+          <Text style={styles.helperText}>
+            Invite new members by sharing your group's invite code or link. When they open the app and enter the code, they will be joined automatically.
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: colors.background,
   },
   content: {
-    padding: 16,
-    paddingBottom: 40,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  notFoundContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  notFoundText: {
+    ...typography.title,
+    color: colors.textMuted,
   },
   inviteCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 24,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
+    marginBottom: spacing.xl,
   },
-  inviteTitle: {
-    fontSize: 12,
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  inviteCode: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#3B82F6',
-    letterSpacing: 2,
-  },
-  shareButton: {
+  inviteHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#2563EB',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  shareButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  listCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  memberRow: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#0F172A',
+    marginBottom: spacing.xs,
   },
-  memberInfo: {
-    flex: 1,
+  inviteBadge: {
+    backgroundColor: colors.primarySubtle,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
   },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
+  inviteBadgeText: {
+    ...typography.caption,
+    color: colors.primary,
+    fontSize: 10,
   },
-  memberName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#F8FAFC',
-  },
-  youBadge: {
-    fontSize: 12,
-    color: '#64748B',
-  },
-  roleRow: {
+  activeTag: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  roleText: {
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.moneyPositive,
+  },
+  activeText: {
+    ...typography.caption,
+    color: colors.moneyPositive,
     fontSize: 11,
-    fontWeight: '600',
-    color: '#94A3B8',
   },
-  revokeButton: {
-    padding: 8,
+  inviteDescription: {
+    ...typography.secondary,
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
   },
-  addCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 24,
+  codeContainer: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    marginBottom: spacing.md,
   },
-  addCardTitle: {
-    fontSize: 12,
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    fontWeight: '600',
-    marginBottom: 10,
+  codeText: {
+    ...typography.display,
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: 4,
+    color: colors.primary,
   },
-  addInputRow: {
+  inviteActions: {
     flexDirection: 'row',
-    gap: 10,
+    gap: spacing.sm,
   },
-  addInput: {
+  actionBtn: {
     flex: 1,
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    color: '#F8FAFC',
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
+    height: 44,
   },
-  addButton: {
+  rosterHeader: {
+    marginBottom: spacing.sm,
+  },
+  rosterTitle: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textMuted,
+    marginBottom: 2,
+  },
+  rosterSub: {
+    ...typography.secondary,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  membersCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    marginBottom: spacing.lg,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  memberRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  memberInfo: {
+    flex: 1,
+    marginLeft: spacing.md,
+    gap: 3,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  memberName: {
+    ...typography.bodySemibold,
+    fontSize: 15,
+    color: colors.text,
+  },
+  youBadge: {
+    backgroundColor: colors.surfaceSubtle,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  youBadgeText: {
+    ...typography.caption,
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#2563EB',
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    justifyContent: 'center',
   },
-  addButtonText: {
-    color: '#FFFFFF',
+  rolePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radii.pill,
+  },
+  roleText: {
+    fontSize: 11,
     fontWeight: '600',
-    fontSize: 14,
+  },
+  emailText: {
+    ...typography.secondary,
+    fontSize: 12,
+    color: colors.textMuted,
+    flex: 1,
+  },
+  revokeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.md,
+    backgroundColor: colors.dangerBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.sm,
+  },
+  helperBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  helperText: {
+    ...typography.secondary,
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    flex: 1,
   },
 });

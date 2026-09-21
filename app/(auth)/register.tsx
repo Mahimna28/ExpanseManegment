@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,13 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { signUp } from '../../src/services/auth';
-import { supabase } from '../../src/services/supabase';
+import {
+  savePendingInviteCode,
+  getPendingInviteCode,
+  redeemPendingInvite,
+} from '../../src/services/invites';
 import { registerSchema } from '../../src/engine/validation';
-import { User, Lock, Mail, KeyRound, Users } from 'lucide-react-native';
-import { useAuthStore } from '../../src/stores/auth.store';
+import { User, Lock, Mail, KeyRound } from 'lucide-react-native';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -28,16 +31,14 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleDemoMode = () => {
-    const demoId = 'local-user-' + Math.random().toString(36).substring(2, 9);
-    useAuthStore.getState().setUser(demoId, {
-      id: demoId,
-      display_name: displayName.trim() || 'Mahimna',
-      email: email.trim() || 'demo@expenseshare.local',
-      updated_at: new Date().toISOString(),
+  // Auto-fill invite code if previously preserved (e.g. from an invite deep link)
+  useEffect(() => {
+    getPendingInviteCode().then((code) => {
+      if (code && !inviteCode) {
+        setInviteCode(code);
+      }
     });
-    router.replace('/(app)');
-  };
+  }, []);
 
   const handleRegister = async () => {
     setErrors({});
@@ -60,34 +61,33 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
+      // 1. If invite code was supplied, save it so it survives email verification
+      if (inviteCode.trim()) {
+        await savePendingInviteCode(inviteCode.trim());
+      }
+
+      // 2. Register user
       await signUp(email, password, displayName);
 
-      // If invite code was supplied, join the group immediately
-      if (inviteCode.trim()) {
-        try {
-          await supabase.rpc('join_group', {
-            p_invite_code: inviteCode.trim().toUpperCase(),
-          });
-        } catch {
-          // Non-blocking: user can join from inside the app if needed
-        }
+      // 3. Attempt immediate redemption in case session was established without email confirmation
+      try {
+        await redeemPendingInvite();
+      } catch {
+        // Non-blocking: will auto-redeem upon user's first login
       }
+
+      const alertMsg = inviteCode.trim()
+        ? 'Your account has been created! If email verification is required, please verify your email and sign in. Your group invite has been saved and will activate automatically.'
+        : 'Please check your email if verification is required, then sign in.';
 
       Alert.alert(
         'Account Created',
-        'Please check your email if verification is required, then sign in.',
+        alertMsg,
         [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }],
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Registration failed';
-      Alert.alert(
-        'Sign Up Failed',
-        `${message}\n\nWould you like to explore the app now in Offline / Demo Mode?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Enter Demo Mode', onPress: handleDemoMode },
-        ],
-      );
+      Alert.alert('Registration Failed', message);
     } finally {
       setLoading(false);
     }
@@ -206,20 +206,6 @@ export default function RegisterScreen() {
             ) : (
               <Text style={styles.primaryButtonText}>Create Account</Text>
             )}
-          </TouchableOpacity>
-
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <TouchableOpacity
-            style={styles.demoButton}
-            onPress={handleDemoMode}
-          >
-            <Users size={16} color="#38BDF8" />
-            <Text style={styles.demoButtonText}>Explore in Offline / Demo Mode</Text>
           </TouchableOpacity>
         </View>
 
@@ -349,37 +335,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     marginTop: 4,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 16,
-    gap: 10,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#334155',
-  },
-  dividerText: {
-    color: '#64748B',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  demoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#0F172A',
-    paddingVertical: 13,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#38BDF8',
-  },
-  demoButtonText: {
-    color: '#38BDF8',
-    fontSize: 15,
-    fontWeight: '600',
   },
 });

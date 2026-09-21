@@ -43,6 +43,16 @@ declare module 'lucide-react-native' {
   export const Archive: Icon;
   export const ArrowRight: Icon;
   export const FileText: Icon;
+  export const Utensils: Icon;
+  export const Car: Icon;
+  export const Home: Icon;
+  export const ShoppingCart: Icon;
+  export const Coffee: Icon;
+  export const Film: Icon;
+  export const ShoppingBag: Icon;
+  export const Copy: Icon;
+  export const ShieldCheck: Icon;
+  export const HelpCircle: Icon;
 
   const icons: Record<string, Icon>;
   export default icons;

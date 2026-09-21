@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle, SafeAreaView } from 'react-native';
+import { View, StyleSheet, ViewStyle, Platform, StatusBar } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../theme';
 
 interface ScreenContainerProps {
@@ -9,22 +10,26 @@ interface ScreenContainerProps {
 }
 
 export function ScreenContainer({ children, style, safeArea = true }: ScreenContainerProps) {
-  if (safeArea) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={[styles.container, style]}>{children}</View>
-      </SafeAreaView>
-    );
-  }
+  const insets = useSafeAreaInsets();
+  const topInset = safeArea
+    ? Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0)
+    : 0;
+  const bottomInset = safeArea ? insets.bottom : 0;
 
-  return <View style={[styles.container, style]}>{children}</View>;
+  return (
+    <View
+      style={[
+        styles.container,
+        safeArea && { paddingTop: topInset, paddingBottom: bottomInset },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   container: {
     flex: 1,
     backgroundColor: colors.background,

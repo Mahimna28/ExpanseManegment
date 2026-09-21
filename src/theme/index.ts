@@ -1,39 +1,51 @@
 /**
- * ExpenseShare Design System Tokens
- * Primary Theme: Light Mode (Clean, crisp, human-designed, inspired by Tricount)
+ * ExpenseShare Design System — "Crafted Clarity"
+ * Primary Theme: Light Mode (Warm porcelain, indigo accent, emerald credit, coral debit)
  */
 
 export const colors: Record<string, string> = {
-  // Canvases & Surfaces
-  background: '#F8FAFC',        // Slate-50: Crisp, clean light background
-  surface: '#FFFFFF',           // Pure white: Cards, lists, sheets
-  surfaceSubtle: '#F1F5F9',     // Slate-100: Input backgrounds, pill selectors
-  surfaceElevated: '#FFFFFF',
+  // Canvas & Backgrounds
+  background: '#F8F9FA',         // Warm porcelain/chalk: clean, glare-free, organic
+  surface: '#FFFFFF',            // Crisp pure white cards and tiles
+  surfaceSubtle: '#F1F3F5',      // Soft slate-gray for inputs, pill switchers
+  surfaceHover: '#F8FAFC',
+  surfaceCard: '#FFFFFF',
 
   // Hairlines & Borders
-  border: '#E2E8F0',            // Slate-200: Subtle hairline borders
-  borderSubtle: '#F1F5F9',      // Slate-100: Internal row dividers
-  divider: '#EDF2F7',
+  border: '#E9ECEF',             // Ultra-fine light border
+  borderSubtle: '#F1F3F5',
+  borderStrong: '#DDE2E5',
 
   // Typography
-  text: '#0F172A',              // Slate-900: Primary high-contrast text
-  textMuted: '#64748B',         // Slate-500: Subtitles, metadata, timestamps
-  textDim: '#94A3B8',           // Slate-400: Placeholders, captions
+  text: '#0F172A',               // Obsidian slate: high contrast, ultra-readable
+  textMuted: '#64748B',          // Medium slate: secondary labels, timestamps
+  textDim: '#94A3B8',            // Light slate: placeholders, micro captions
+  textWhite: '#FFFFFF',
 
-  // Primary Brand & Action
-  primary: '#2563EB',           // Blue-600: Intentional primary buttons & links
-  primaryDark: '#1D4ED8',       // Blue-700
-  primarySubtle: '#EFF6FF',     // Blue-50: Subtle tint for active tabs/chips
+  // Brand & Action Accent (Modern Indigo / Violet - distinctive & premium)
+  primary: '#4F46E5',            // Indigo-600
+  primaryDark: '#4338CA',        // Indigo-700
+  primaryLight: '#6366F1',       // Indigo-500
+  primarySubtle: '#EEF2FF',      // Indigo-50: soft pill tint
+  primaryBorder: '#C7D2FE',      // Indigo-200
 
-  // Financial Semantics (Money Values)
-  moneyPositive: '#059669',     // Emerald-600: "You are owed" / Positive balance
-  moneyPositiveBg: '#ECFDF5',   // Emerald-50: Soft green badge tint
-  moneyNegative: '#E11D48',     // Rose-600: "You owe" / Negative balance
-  moneyNegativeBg: '#FFF1F2',   // Rose-50: Soft rose badge tint
-  moneyNeutral: '#64748B',      // Slate-500: Settled / 0 balance
-  moneyNeutralBg: '#F1F5F9',    // Slate-100
+  // Financial Semantics
+  // Positive: Owed to you / Money in
+  moneyPositive: '#059669',      // Emerald-600
+  moneyPositiveBg: '#ECFDF5',    // Mint emerald tint
+  moneyPositiveBorder: '#A7F3D0',// Emerald-200
 
-  // System States
+  // Negative: You owe / Money out
+  moneyNegative: '#E11D48',      // Rose-600
+  moneyNegativeBg: '#FFF1F2',    // Soft coral tint
+  moneyNegativeBorder: '#FECDD3',// Rose-200
+
+  // Neutral: All settled
+  moneyNeutral: '#64748B',       // Slate-500
+  moneyNeutralBg: '#F1F5F9',     // Slate-100
+  moneyNeutralBorder: '#E2E8F0',
+
+  // System
   danger: '#EF4444',
   dangerBg: '#FEF2F2',
   warning: '#F59E0B',
@@ -96,7 +108,7 @@ export const typography = {
     fontWeight: '700' as const,
     letterSpacing: -0.2,
   },
-} as const;
+};
 
 export const spacing = {
   xs: 4,
@@ -110,10 +122,11 @@ export const spacing = {
 } as const;
 
 export const radii = {
-  sm: 6,
-  md: 10,
-  lg: 14,
-  pill: 24,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  pill: 9999,
   full: 9999,
 } as const;
 
@@ -128,15 +141,15 @@ export const shadows = {
   card: {
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
   },
-  elevated: {
+  floating: {
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
   },
 } as const;

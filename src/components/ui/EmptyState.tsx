@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { colors, spacing, typography } from '../../theme';
 
 interface EmptyStateProps {
@@ -7,11 +7,12 @@ interface EmptyStateProps {
   title: string;
   description: string;
   action?: React.ReactNode;
+  style?: ViewStyle;
 }
 
-export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+export function EmptyState({ icon, title, description, action, style }: EmptyStateProps) {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, style]}>
       <View style={styles.iconWrapper}>{icon}</View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.description}>{description}</Text>
@@ -24,33 +25,35 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.huge,
-    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
   },
   iconWrapper: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: colors.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   title: {
     ...typography.title,
+    fontSize: 15,
+    fontWeight: '600',
     color: colors.text,
-    marginBottom: spacing.xs,
+    marginBottom: 4,
     textAlign: 'center',
   },
   description: {
-    ...typography.body,
+    ...typography.secondary,
     color: colors.textMuted,
     textAlign: 'center',
-    fontSize: 14,
-    lineHeight: 20,
-    maxWidth: 280,
+    fontSize: 13,
+    lineHeight: 18,
+    maxWidth: 260,
   },
   actionWrapper: {
-    marginTop: spacing.xl,
+    marginTop: spacing.md,
   },
 });

@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, Platform, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
 import { colors, typography, spacing } from '../../theme';
 
@@ -22,6 +23,11 @@ export function AppHeader({
   style,
 }: AppHeaderProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0,
+  );
 
   const handleBack = () => {
     if (onBack) {
@@ -32,7 +38,7 @@ export function AppHeader({
   };
 
   return (
-    <View style={[styles.header, style]}>
+    <View style={[styles.header, { paddingTop: topInset + 6 }, style]}>
       <View style={styles.leftContainer}>
         {showBack && (
           <TouchableOpacity
