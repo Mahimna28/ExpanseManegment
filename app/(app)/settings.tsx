@@ -11,16 +11,20 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOut } from '../../src/services/auth';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useSyncStore } from '../../src/stores/sync.store';
 import { useAppLock } from '../../src/hooks/useAppLock';
 import { triggerSync } from '../../src/sync/engine';
 import { getDatabase } from '../../src/db/client';
-import { User, Lock, RefreshCw, LogOut } from 'lucide-react-native';
+import { AppHeader, Avatar } from '../../src/components/ui';
+import { colors, spacing, typography, radii, shadows } from '../../src/theme';
+import { Lock, RefreshCw, LogOut, ShieldCheck, Mail, User } from 'lucide-react-native';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const profile = useAuthStore((s) => s.profile);
   const { pendingCount, lastSyncedAt } = useSyncStore();
   const { appLockEnabled, setupPin, disableAppLock } = useAppLock();
@@ -109,85 +113,115 @@ export default function SettingsScreen() {
     );
   };
 
+  const displayName = profile?.display_name || 'Member';
+  const email = profile?.email || 'No email';
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Profile Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionHeader}>Profile</Text>
-        <View style={styles.card}>
-          <View style={styles.profileRow}>
-            <View style={styles.avatar}>
-              <User size={24} color="#94A3B8" />
-            </View>
+    <View style={styles.root}>
+      <AppHeader
+        title="Settings"
+        showBack
+        onBack={() => router.back()}
+      />
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom, 24) + 24 },
+        ]}
+      >
+        {/* Profile Card */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>Account</Text>
+          <View style={[styles.profileCard, shadows.subtle]}>
+            <Avatar name={displayName} size={52} />
             <View style={styles.profileDetails}>
-              <Text style={styles.profileName}>{profile?.display_name || 'Member'}</Text>
-              <Text style={styles.profileEmail}>{profile?.email || 'No email'}</Text>
+              <Text style={styles.profileName}>{displayName}</Text>
+              <View style={styles.profileEmailRow}>
+                <Mail size={13} color={colors.textSecondary} />
+                <Text style={styles.profileEmail}>{email}</Text>
+              </View>
             </View>
           </View>
         </View>
-      </View>
 
-      {/* Security Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionHeader}>Security</Text>
-        <View style={styles.card}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingLabelGroup}>
-              <Lock size={18} color="#94A3B8" />
-              <View>
-                <Text style={styles.settingTitle}>App Lock (PIN / Biometrics)</Text>
+        {/* Security Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>Security</Text>
+          <View style={[styles.card, shadows.subtle]}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingIconWrapper}>
+                <Lock size={18} color={colors.primary} />
+              </View>
+              <View style={styles.settingTextGroup}>
+                <Text style={styles.settingTitle}>App Lock (PIN)</Text>
                 <Text style={styles.settingSubtitle}>
                   Require PIN to view expenses when reopening the app
                 </Text>
               </View>
+              <Switch
+                value={appLockEnabled}
+                onValueChange={handleToggleAppLock}
+                trackColor={{ false: colors.borderSubtle, true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
             </View>
-            <Switch
-              value={appLockEnabled}
-              onValueChange={handleToggleAppLock}
-              trackColor={{ false: '#334155', true: '#2563EB' }}
-              thumbColor={appLockEnabled ? '#FFFFFF' : '#94A3B8'}
-            />
           </View>
         </View>
-      </View>
 
-      {/* Sync Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionHeader}>Offline Synchronization</Text>
-        <View style={styles.card}>
-          <View style={styles.syncInfoRow}>
-            <Text style={styles.syncLabel}>Pending Changes:</Text>
-            <Text style={styles.syncValue}>{pendingCount} items</Text>
+        {/* Offline Synchronization Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>Offline Synchronization</Text>
+          <View style={[styles.card, shadows.subtle]}>
+            <View style={styles.syncInfoRow}>
+              <Text style={styles.syncLabel}>Pending Changes</Text>
+              <View style={[styles.pendingPill, pendingCount > 0 && styles.pendingPillActive]}>
+                <Text style={[styles.pendingPillText, pendingCount > 0 && styles.pendingPillTextActive]}>
+                  {pendingCount} {pendingCount === 1 ? 'item' : 'items'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.syncDivider} />
+
+            <View style={styles.syncInfoRow}>
+              <Text style={styles.syncLabel}>Last Synced</Text>
+              <Text style={styles.syncValue}>
+                {lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : 'Never'}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.syncButton, syncing && styles.buttonDisabled]}
+              onPress={handleSyncNow}
+              disabled={syncing}
+            >
+              <RefreshCw size={16} color="#FFFFFF" />
+              <Text style={styles.syncButtonText}>
+                {syncing ? 'Syncing...' : 'Sync Now'}
+              </Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.syncInfoRow}>
-            <Text style={styles.syncLabel}>Last Synced:</Text>
-            <Text style={styles.syncValue}>
-              {lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : 'Never'}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.syncButton, syncing && styles.buttonDisabled]}
-            onPress={handleSyncNow}
-            disabled={syncing}
-          >
-            <RefreshCw size={16} color="#FFFFFF" />
-            <Text style={styles.syncButtonText}>
-              {syncing ? 'Syncing...' : 'Sync Now'}
-            </Text>
-          </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Sign Out */}
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <LogOut size={18} color="#EF4444" />
-        <Text style={styles.signOutText}>Sign Out</Text>
-      </TouchableOpacity>
+        {/* Sign Out Button */}
+        <TouchableOpacity
+          style={[styles.signOutButton, shadows.subtle]}
+          onPress={handleSignOut}
+          activeOpacity={0.8}
+        >
+          <LogOut size={18} color={colors.danger} />
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
+      </ScrollView>
 
       {/* PIN Setup Modal */}
-      <Modal visible={pinModalVisible} transparent animationType="slide">
+      <Modal visible={pinModalVisible} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, shadows.floating]}>
+            <View style={styles.modalIconWrap}>
+              <ShieldCheck size={28} color={colors.primary} />
+            </View>
             <Text style={styles.modalTitle}>Set App Lock PIN</Text>
             <Text style={styles.modalSubtitle}>
               Choose a 4 to 6-digit numeric PIN to secure your local expense data.
@@ -198,7 +232,7 @@ export default function SettingsScreen() {
               value={newPin}
               onChangeText={setNewPin}
               placeholder="New PIN (4-6 digits)"
-              placeholderTextColor="#64748B"
+              placeholderTextColor={colors.textDim}
               keyboardType="numeric"
               secureTextEntry
               maxLength={6}
@@ -209,7 +243,7 @@ export default function SettingsScreen() {
               value={confirmPin}
               onChangeText={setConfirmPin}
               placeholder="Confirm PIN"
-              placeholderTextColor="#64748B"
+              placeholderTextColor={colors.textDim}
               keyboardType="numeric"
               secureTextEntry
               maxLength={6}
@@ -234,109 +268,138 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: colors.background,
   },
   content: {
-    padding: 20,
+    padding: spacing.md,
+    gap: spacing.lg,
   },
   section: {
-    marginBottom: 24,
+    gap: spacing.xs,
   },
   sectionHeader: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 10,
+    marginLeft: spacing.xs,
   },
-  card: {
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  profileRow: {
+  profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-  },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#0F172A',
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.borderSubtle,
   },
   profileDetails: {
     flex: 1,
+    gap: 3,
   },
   profileName: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#F8FAFC',
-    marginBottom: 2,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  profileEmailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   profileEmail: {
     fontSize: 13,
-    color: '#94A3B8',
+    color: colors.textSecondary,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
   },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.md,
   },
-  settingLabelGroup: {
-    flexDirection: 'row',
+  settingIconWrapper: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.md,
+    backgroundColor: colors.primarySubtle,
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+  },
+  settingTextGroup: {
     flex: 1,
-    paddingRight: 10,
+    gap: 2,
   },
   settingTitle: {
     fontSize: 15,
-    fontWeight: '500',
-    color: '#F8FAFC',
-    marginBottom: 2,
+    fontWeight: '600',
+    color: colors.textPrimary,
   },
   settingSubtitle: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
   syncInfoRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    paddingVertical: 4,
+  },
+  syncDivider: {
+    height: 1,
+    backgroundColor: colors.borderSubtle,
+    marginVertical: spacing.sm,
   },
   syncLabel: {
     fontSize: 14,
-    color: '#94A3B8',
+    color: colors.textSecondary,
   },
   syncValue: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#F8FAFC',
+    color: colors.textPrimary,
+  },
+  pendingPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  pendingPillActive: {
+    backgroundColor: colors.warningBg,
+  },
+  pendingPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  pendingPillTextActive: {
+    color: colors.warning,
   },
   syncButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#2563EB',
-    paddingVertical: 11,
-    borderRadius: 10,
-    marginTop: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: radii.md,
+    marginTop: spacing.md,
   },
   syncButtonText: {
     color: '#FFFFFF',
@@ -351,58 +414,71 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
     paddingVertical: 14,
     borderWidth: 1,
-    borderColor: '#EF4444',
-    marginTop: 8,
-    marginBottom: 40,
+    borderColor: colors.danger,
+    marginTop: spacing.xs,
   },
   signOutText: {
-    color: '#EF4444',
+    color: colors.danger,
     fontSize: 15,
     fontWeight: '600',
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
   modalCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
-    padding: 24,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.borderSubtle,
+    alignItems: 'center',
+  },
+  modalIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primarySubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#F8FAFC',
-    marginBottom: 8,
+    color: colors.textPrimary,
+    marginBottom: 6,
+    textAlign: 'center',
   },
   modalSubtitle: {
     fontSize: 13,
-    color: '#94A3B8',
+    color: colors.textSecondary,
     marginBottom: 20,
     lineHeight: 18,
+    textAlign: 'center',
   },
   modalPinInput: {
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
+    width: '100%',
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    color: '#F8FAFC',
+    color: colors.textPrimary,
     fontSize: 16,
+    fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
     marginBottom: 12,
     textAlign: 'center',
   },
   modalError: {
-    color: '#EF4444',
+    color: colors.danger,
     fontSize: 12,
     marginBottom: 12,
     textAlign: 'center',
@@ -411,24 +487,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
+    width: '100%',
   },
   modalCancelButton: {
     flex: 1,
     paddingVertical: 12,
     alignItems: 'center',
-    borderRadius: 8,
-    backgroundColor: '#0F172A',
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   modalCancelText: {
-    color: '#94A3B8',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   modalSaveButton: {
     flex: 1,
     paddingVertical: 12,
     alignItems: 'center',
-    borderRadius: 8,
-    backgroundColor: '#2563EB',
+    borderRadius: radii.md,
+    backgroundColor: colors.primary,
   },
   modalSaveText: {
     color: '#FFFFFF',

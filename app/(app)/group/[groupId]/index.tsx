@@ -264,7 +264,14 @@ export default function GroupDetailScreen() {
                       isMeFrom={isMeFrom}
                       isMeTo={isMeTo}
                       onSettle={() =>
-                        router.push(`/(app)/group/${groupId}/new-settlement` as any)
+                        router.push({
+                          pathname: `/(app)/group/${groupId}/new-settlement` as any,
+                          params: {
+                            fromUserId: s.from_user_id,
+                            toUserId: s.to_user_id,
+                            amountPaise: s.amount_paise.toString(),
+                          },
+                        })
                       }
                     />
                   );

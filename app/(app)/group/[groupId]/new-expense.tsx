@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { GroupsRepo } from '../../../../src/repositories/groups.repo';
 import { CategoriesRepo } from '../../../../src/repositories/categories.repo';
@@ -20,12 +21,15 @@ import { rupeesToPaise, paiseToRupees } from '../../../../src/engine/currency';
 import { equalSplit, customSplit } from '../../../../src/engine/split-math';
 import { SplitTypeSelector } from '../../../../src/components/expenses/SplitTypeSelector';
 import { triggerSync } from '../../../../src/sync/engine';
+import { AppHeader, PrimaryButton, Avatar } from '../../../../src/components/ui';
+import { colors, spacing, typography, radii, shadows } from '../../../../src/theme';
 import type { SplitType } from '../../../../src/types/models';
-import { Check, Calendar } from 'lucide-react-native';
+import { Check, Calendar, Receipt, Tag, AlertCircle, CheckCircle2 } from 'lucide-react-native';
 
 export default function NewExpenseScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const currentUserId = useAuthStore((s) => s.userId);
 
   const members = GroupsRepo.listMembers(groupId);
@@ -59,17 +63,43 @@ export default function NewExpenseScreen() {
     }
   };
 
+  // Parsed total paise
+  const totalPaise = useMemo(() => {
+    try {
+      return amountStr.trim() ? rupeesToPaise(amountStr) : 0;
+    } catch {
+      return 0;
+    }
+  }, [amountStr]);
+
+  // Equal split per person estimate
+  const equalSplitPerPersonPaise = useMemo(() => {
+    if (totalPaise <= 0 || selectedParticipants.length === 0) return 0;
+    return Math.floor(totalPaise / selectedParticipants.length);
+  }, [totalPaise, selectedParticipants.length]);
+
+  // Custom split remainder tracker
+  const customSumPaise = useMemo(() => {
+    return members.reduce((sum, m) => {
+      const valStr = customAllocations[m.user_id] || '';
+      try {
+        return sum + (valStr.trim() ? rupeesToPaise(valStr) : 0);
+      } catch {
+        return sum;
+      }
+    }, 0);
+  }, [customAllocations, members]);
+
+  const customDiffPaise = totalPaise - customSumPaise;
+
   const handleSave = () => {
     if (!title.trim()) {
       Alert.alert('Validation Error', 'Please enter an expense title');
       return;
     }
 
-    let totalPaise = 0;
-    try {
-      totalPaise = rupeesToPaise(amountStr);
-    } catch (err: unknown) {
-      Alert.alert('Validation Error', err instanceof Error ? err.message : 'Invalid amount');
+    if (totalPaise <= 0) {
+      Alert.alert('Validation Error', 'Please enter a valid amount greater than ₹0');
       return;
     }
 
@@ -118,7 +148,6 @@ export default function NewExpenseScreen() {
 
       // Trigger sync in background
       triggerSync().catch(console.warn);
-
       router.back();
     } catch (err: unknown) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save expense');
@@ -126,319 +155,623 @@ export default function NewExpenseScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.keyboardView}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* Title and Amount */}
-        <View style={styles.card}>
-          <Text style={styles.cardHeader}>Expense Details</Text>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Title</Text>
-            <TextInput
-              style={styles.input}
-              value={title}
-              onChangeText={setTitle}
-              placeholder="e.g. Dinner at Fisherman's Wharf"
-              placeholderTextColor="#64748B"
-              maxLength={200}
-            />
-          </View>
+    <View style={styles.root}>
+      <AppHeader
+        title="New Expense"
+        showBack
+        onBack={() => router.back()}
+      />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Total Amount (₹)</Text>
-            <TextInput
-              style={[styles.input, styles.amountInput]}
-              value={amountStr}
-              onChangeText={setAmountStr}
-              placeholder="0.00"
-              placeholderTextColor="#64748B"
-              keyboardType="decimal-pad"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Date</Text>
-            <View style={styles.dateInputWrapper}>
-              <Calendar size={16} color="#64748B" />
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 24) + 80 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Hero Amount Input Card */}
+          <View style={[styles.card, styles.heroCard, shadows.subtle]}>
+            <Text style={styles.cardLabel}>Amount</Text>
+            <View style={styles.amountInputRow}>
+              <Text style={styles.currencySymbol}>₹</Text>
               <TextInput
-                style={styles.dateInput}
+                style={styles.amountInput}
+                value={amountStr}
+                onChangeText={setAmountStr}
+                placeholder="0.00"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="decimal-pad"
+                autoFocus
+              />
+            </View>
+
+            {/* Title Input */}
+            <View style={styles.inputDivider} />
+            <View style={styles.titleInputRow}>
+              <Receipt size={18} color={colors.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.titleInput}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="What was this expense for?"
+                placeholderTextColor={colors.textMuted}
+                maxLength={200}
+              />
+            </View>
+
+            {/* Date Input */}
+            <View style={styles.inputDivider} />
+            <View style={styles.titleInputRow}>
+              <Calendar size={18} color={colors.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.titleInput}
                 value={expenseDate}
                 onChangeText={setExpenseDate}
                 placeholder="YYYY-MM-DD"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={colors.textMuted}
               />
             </View>
           </View>
-        </View>
 
-        {/* Payer Selection */}
-        <View style={styles.card}>
-          <Text style={styles.cardHeader}>Paid By</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow}>
-            {members.map((m) => {
-              const isSelected = paidBy === m.user_id;
-              const name = m.display_name || m.email?.split('@')[0] || 'Member';
-              return (
-                <TouchableOpacity
-                  key={m.user_id}
-                  style={[styles.pill, isSelected && styles.pillSelected]}
-                  onPress={() => setPaidBy(m.user_id)}
-                >
-                  <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
-                    {name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* Split Type and Configuration */}
-        <View style={styles.card}>
-          <Text style={styles.cardHeader}>Split Method</Text>
-          <SplitTypeSelector value={splitType} onChange={setSplitType} />
-
-          {splitType === 'equal' ? (
-            <View style={styles.splitList}>
-              <Text style={styles.subHeader}>Select participants to split equally:</Text>
+          {/* Paid By Selector */}
+          <View style={[styles.card, shadows.subtle]}>
+            <Text style={styles.cardTitle}>Paid By</Text>
+            <Text style={styles.cardSubtitle}>Select who paid for this expense</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.payerRow}
+            >
               {members.map((m) => {
-                const isChecked = selectedParticipants.includes(m.user_id);
+                const isSelected = paidBy === m.user_id;
                 const name = m.display_name || m.email?.split('@')[0] || 'Member';
                 return (
                   <TouchableOpacity
                     key={m.user_id}
-                    style={styles.checkboxRow}
-                    onPress={() => toggleParticipant(m.user_id)}
+                    style={[
+                      styles.payerPill,
+                      isSelected && styles.payerPillSelected,
+                    ]}
+                    onPress={() => setPaidBy(m.user_id)}
                   >
-                    <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
-                      {isChecked && <Check size={14} color="#FFFFFF" />}
-                    </View>
-                    <Text style={styles.participantName}>{name}</Text>
+                    <Avatar name={name} size={28} />
+                    <Text
+                      style={[
+                        styles.payerText,
+                        isSelected && styles.payerTextSelected,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {name}
+                    </Text>
+                    {isSelected && (
+                      <View style={styles.payerCheckCircle}>
+                        <Check size={10} color="#FFFFFF" />
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}
-            </View>
-          ) : (
-            <View style={styles.splitList}>
-              <Text style={styles.subHeader}>Specify exact amount per person (₹):</Text>
-              {members.map((m) => {
-                const name = m.display_name || m.email?.split('@')[0] || 'Member';
-                return (
-                  <View key={m.user_id} style={styles.customSplitRow}>
-                    <Text style={styles.customMemberName}>{name}</Text>
-                    <TextInput
-                      style={styles.customAmountInput}
-                      value={customAllocations[m.user_id] || ''}
-                      onChangeText={(val) =>
-                        setCustomAllocations({ ...customAllocations, [m.user_id]: val })
-                      }
-                      placeholder="0.00"
-                      placeholderTextColor="#64748B"
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                );
-              })}
-            </View>
-          )}
-        </View>
-
-        {/* Category Picker (if any) */}
-        {categories.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.cardHeader}>Category</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow}>
-              <TouchableOpacity
-                style={[styles.pill, categoryId === null && styles.pillSelected]}
-                onPress={() => setCategoryId(null)}
-              >
-                <Text style={[styles.pillText, categoryId === null && styles.pillTextSelected]}>
-                  General
-                </Text>
-              </TouchableOpacity>
-              {categories.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[styles.pill, categoryId === c.id && styles.pillSelected]}
-                  onPress={() => setCategoryId(c.id)}
-                >
-                  <Text style={[styles.pillText, categoryId === c.id && styles.pillTextSelected]}>
-                    {c.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
             </ScrollView>
           </View>
-        )}
 
-        {/* Save Button */}
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveButtonText}>Save Expense</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {/* Split Method & Participants */}
+          <View style={[styles.card, shadows.subtle]}>
+            <Text style={styles.cardTitle}>Split Method</Text>
+            <Text style={styles.cardSubtitle}>How should this bill be divided?</Text>
+
+            <View style={styles.splitSelectorWrapper}>
+              <SplitTypeSelector value={splitType} onChange={setSplitType} />
+            </View>
+
+            {splitType === 'equal' ? (
+              <View style={styles.splitContent}>
+                <View style={styles.splitHeaderRow}>
+                  <Text style={styles.splitSectionLabel}>
+                    Participants ({selectedParticipants.length} of {members.length})
+                  </Text>
+                  {totalPaise > 0 && selectedParticipants.length > 0 && (
+                    <Text style={styles.splitLiveEstimate}>
+                      ~{paiseToRupees(equalSplitPerPersonPaise)} / person
+                    </Text>
+                  )}
+                </View>
+
+                {members.map((m) => {
+                  const isChecked = selectedParticipants.includes(m.user_id);
+                  const name = m.display_name || m.email?.split('@')[0] || 'Member';
+                  return (
+                    <TouchableOpacity
+                      key={m.user_id}
+                      style={[
+                        styles.participantRow,
+                        isChecked && styles.participantRowChecked,
+                      ]}
+                      onPress={() => toggleParticipant(m.user_id)}
+                    >
+                      <View style={styles.participantLeft}>
+                        <View
+                          style={[
+                            styles.checkbox,
+                            isChecked && styles.checkboxChecked,
+                          ]}
+                        >
+                          {isChecked && <Check size={12} color="#FFFFFF" />}
+                        </View>
+                        <Avatar name={name} size={30} />
+                        <Text style={styles.participantName}>{name}</Text>
+                      </View>
+                      {isChecked && totalPaise > 0 && (
+                        <Text style={styles.participantShare}>
+                          {paiseToRupees(equalSplitPerPersonPaise)}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.splitContent}>
+                {/* Custom Split Remainder Status Banner */}
+                <View
+                  style={[
+                    styles.remainderBanner,
+                    customDiffPaise === 0
+                      ? styles.remainderBannerBalanced
+                      : customDiffPaise > 0
+                      ? styles.remainderBannerPending
+                      : styles.remainderBannerOver,
+                  ]}
+                >
+                  {customDiffPaise === 0 ? (
+                    <>
+                      <CheckCircle2 size={16} color={colors.success[600]} />
+                      <Text style={styles.remainderTextBalanced}>
+                        Exact amounts balanced ({paiseToRupees(totalPaise)})
+                      </Text>
+                    </>
+                  ) : customDiffPaise > 0 ? (
+                    <>
+                      <AlertCircle size={16} color={colors.warning[600]} />
+                      <Text style={styles.remainderTextPending}>
+                        {paiseToRupees(customDiffPaise)} remaining to allocate
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle size={16} color={colors.danger[600]} />
+                      <Text style={styles.remainderTextOver}>
+                        Allocations exceed total by {paiseToRupees(-customDiffPaise)}
+                      </Text>
+                    </>
+                  )}
+                </View>
+
+                {members.map((m) => {
+                  const name = m.display_name || m.email?.split('@')[0] || 'Member';
+                  return (
+                    <View key={m.user_id} style={styles.customMemberRow}>
+                      <View style={styles.customMemberLeft}>
+                        <Avatar name={name} size={32} />
+                        <Text style={styles.customMemberName}>{name}</Text>
+                      </View>
+                      <View style={styles.customInputWrapper}>
+                        <Text style={styles.customRupeeSymbol}>₹</Text>
+                        <TextInput
+                          style={styles.customAmountInput}
+                          value={customAllocations[m.user_id] || ''}
+                          onChangeText={(val) =>
+                            setCustomAllocations({
+                              ...customAllocations,
+                              [m.user_id]: val,
+                            })
+                          }
+                          placeholder="0.00"
+                          placeholderTextColor={colors.textMuted}
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+
+          {/* Category Picker (if any) */}
+          {categories.length > 0 && (
+            <View style={[styles.card, shadows.subtle]}>
+              <Text style={styles.cardTitle}>Category</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryRow}
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.categoryPill,
+                    categoryId === null && styles.categoryPillSelected,
+                  ]}
+                  onPress={() => setCategoryId(null)}
+                >
+                  <Tag size={13} color={categoryId === null ? colors.primary[600] : colors.textSecondary} />
+                  <Text
+                    style={[
+                      styles.categoryPillText,
+                      categoryId === null && styles.categoryPillTextSelected,
+                    ]}
+                  >
+                    General
+                  </Text>
+                </TouchableOpacity>
+                {categories.map((c) => {
+                  const isSelected = categoryId === c.id;
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[
+                        styles.categoryPill,
+                        isSelected && styles.categoryPillSelected,
+                      ]}
+                      onPress={() => setCategoryId(c.id)}
+                    >
+                      <Tag size={13} color={isSelected ? colors.primary[600] : colors.textSecondary} />
+                      <Text
+                        style={[
+                          styles.categoryPillText,
+                          isSelected && styles.categoryPillTextSelected,
+                        ]}
+                      >
+                        {c.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Optional Notes */}
+          <View style={[styles.card, shadows.subtle]}>
+            <Text style={styles.cardTitle}>Notes (Optional)</Text>
+            <TextInput
+              style={styles.notesInput}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Add any details, receipt notes, etc."
+              placeholderTextColor={colors.textMuted}
+              multiline
+              numberOfLines={2}
+              maxLength={300}
+            />
+          </View>
+        </ScrollView>
+
+        {/* Floating Bottom Save Dock */}
+        <View
+          style={[
+            styles.bottomDock,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+            shadows.card,
+          ]}
+        >
+          <PrimaryButton
+            label={`Save Expense ${totalPaise > 0 ? `(${paiseToRupees(totalPaise)})` : ''}`}
+            onPress={handleSave}
+          />
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   keyboardView: {
     flex: 1,
-    backgroundColor: '#0F172A',
   },
-  container: {
-    padding: 16,
-    paddingBottom: 40,
+  scrollContent: {
+    padding: spacing.md,
+    gap: spacing.md,
   },
   card: {
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.borderSubtle,
   },
-  cardHeader: {
-    fontSize: 14,
+  heroCard: {
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  cardLabel: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#94A3B8',
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 12,
   },
-  inputGroup: {
-    marginBottom: 14,
+  amountInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.xs,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#E2E8F0',
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#F8FAFC',
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: '#334155',
+  currencySymbol: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: colors.primary[600],
+    marginRight: 6,
   },
   amountInput: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#3B82F6',
-  },
-  dateInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  dateInput: {
     flex: 1,
-    color: '#F8FAFC',
-    fontSize: 15,
+    fontSize: 36,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    padding: 0,
   },
-  pillRow: {
-    gap: 8,
-    paddingVertical: 4,
+  inputDivider: {
+    height: 1,
+    backgroundColor: colors.borderSubtle,
+    marginVertical: spacing.sm,
   },
-  pill: {
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  pillSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  pillText: {
-    fontSize: 13,
-    color: '#94A3B8',
-    fontWeight: '500',
-  },
-  pillTextSelected: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  splitList: {
-    marginTop: 14,
-  },
-  subHeader: {
-    fontSize: 13,
-    color: '#94A3B8',
-    marginBottom: 10,
-  },
-  checkboxRow: {
+  titleInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#0F172A',
+    paddingVertical: spacing.xs,
   },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
+  inputIcon: {
+    marginRight: spacing.sm,
+  },
+  titleInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.textPrimary,
+    padding: 0,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+    marginBottom: spacing.sm,
+  },
+  payerRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: 2,
+  },
+  payerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surfaceElevated,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radii.full,
     borderWidth: 1.5,
-    borderColor: '#64748B',
+    borderColor: 'transparent',
+  },
+  payerPillSelected: {
+    backgroundColor: colors.surfaceSelected,
+    borderColor: colors.primary[600],
+  },
+  payerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  payerTextSelected: {
+    color: colors.primary[600],
+  },
+  payerCheckCircle: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.primary[600],
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
-  checkboxChecked: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
+  splitSelectorWrapper: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
   },
-  participantName: {
-    fontSize: 15,
-    color: '#F8FAFC',
-    fontWeight: '500',
+  splitContent: {
+    gap: spacing.xs,
   },
-  customSplitRow: {
+  splitHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  splitSectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  splitLiveEstimate: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary[600],
+  },
+  participantRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.md,
   },
-  customMemberName: {
-    fontSize: 15,
-    color: '#F8FAFC',
+  participantRowChecked: {
+    backgroundColor: colors.surfaceSelected,
+  },
+  participantLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: colors.borderDefault,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary[600],
+    borderColor: colors.primary[600],
+  },
+  participantName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  participantShare: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  remainderBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    marginBottom: spacing.sm,
+  },
+  remainderBannerBalanced: {
+    backgroundColor: colors.successLight,
+  },
+  remainderTextBalanced: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.success[600],
+  },
+  remainderBannerPending: {
+    backgroundColor: colors.warningLight,
+  },
+  remainderTextPending: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.warning[600],
+  },
+  remainderBannerOver: {
+    backgroundColor: colors.dangerLight,
+  },
+  remainderTextOver: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.danger[600],
+  },
+  customMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+  },
+  customMemberLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     flex: 1,
   },
-  customAmountInput: {
-    backgroundColor: '#0F172A',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    color: '#F8FAFC',
-    fontSize: 15,
-    width: 120,
-    textAlign: 'right',
-    borderWidth: 1,
-    borderColor: '#334155',
+  customMemberName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
   },
-  saveButton: {
-    backgroundColor: '#2563EB',
-    paddingVertical: 15,
-    borderRadius: 12,
+  customInputWrapper: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    width: 110,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
   },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  customRupeeSymbol: {
+    fontSize: 13,
     fontWeight: '600',
+    color: colors.textSecondary,
+    marginRight: 4,
+  },
+  customAmountInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    padding: 0,
+    textAlign: 'right',
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  categoryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  categoryPillSelected: {
+    backgroundColor: colors.surfaceSelected,
+    borderColor: colors.primary[600],
+  },
+  categoryPillText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textSecondary,
+  },
+  categoryPillTextSelected: {
+    fontWeight: '600',
+    color: colors.primary[600],
+  },
+  notesInput: {
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 13,
+    color: colors.textPrimary,
+    minHeight: 60,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    marginTop: spacing.xs,
+  },
+  bottomDock: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSubtle,
   },
 });

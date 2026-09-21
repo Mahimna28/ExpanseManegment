@@ -3,13 +3,21 @@
  * Primary Theme: Light Mode (Warm porcelain, indigo accent, emerald credit, coral debit)
  */
 
-export const colors: Record<string, string> = {
+const createColor = (main: string, shades: Record<number | string, string> = {}) => {
+  const str = new String(main);
+  Object.assign(str, { 500: main, 600: main, ...shades });
+  return str as unknown as string & Record<number | string, string>;
+};
+
+export const colors: Record<string, any> = {
   // Canvas & Backgrounds
   background: '#F8F9FA',         // Warm porcelain/chalk: clean, glare-free, organic
   surface: '#FFFFFF',            // Crisp pure white cards and tiles
   surfaceSubtle: '#F1F3F5',      // Soft slate-gray for inputs, pill switchers
   surfaceHover: '#F8FAFC',
   surfaceCard: '#FFFFFF',
+  surfaceElevated: '#FFFFFF',
+  surfaceSelected: '#EEF2FF',
 
   // Hairlines & Borders
   border: '#E9ECEF',             // Ultra-fine light border
@@ -18,12 +26,14 @@ export const colors: Record<string, string> = {
 
   // Typography
   text: '#0F172A',               // Obsidian slate: high contrast, ultra-readable
+  textPrimary: '#0F172A',
+  textSecondary: '#64748B',
   textMuted: '#64748B',          // Medium slate: secondary labels, timestamps
   textDim: '#94A3B8',            // Light slate: placeholders, micro captions
   textWhite: '#FFFFFF',
 
   // Brand & Action Accent (Modern Indigo / Violet - distinctive & premium)
-  primary: '#4F46E5',            // Indigo-600
+  primary: createColor('#4F46E5', { 50: '#EEF2FF', 100: '#E0E7FF', 500: '#6366F1', 600: '#4F46E5', 700: '#4338CA' }),
   primaryDark: '#4338CA',        // Indigo-700
   primaryLight: '#6366F1',       // Indigo-500
   primarySubtle: '#EEF2FF',      // Indigo-50: soft pill tint
@@ -46,7 +56,7 @@ export const colors: Record<string, string> = {
   moneyNeutralBorder: '#E2E8F0',
 
   // System
-  danger: '#EF4444',
+  danger: createColor('#EF4444', { 50: '#FEF2F2', 600: '#EF4444', 700: '#DC2626' }),
   dangerBg: '#FEF2F2',
   warning: '#F59E0B',
   warningBg: '#FFFBEB',

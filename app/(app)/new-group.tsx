@@ -12,15 +12,20 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../src/services/supabase';
 import { GroupsRepo } from '../../src/repositories/groups.repo';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useSyncStore } from '../../src/stores/sync.store';
 import { createGroupSchema } from '../../src/engine/validation';
+import { AppHeader, PrimaryButton } from '../../src/components/ui';
+import { colors, spacing, typography, radii, shadows } from '../../src/theme';
+import { Users, FileText, ShieldCheck } from 'lucide-react-native';
 import * as Crypto from 'expo-crypto';
 
 export default function NewGroupScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const userId = useAuthStore((s) => s.userId);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -114,119 +119,202 @@ export default function NewGroupScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.keyboardView}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.formCard}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Group Name</Text>
-            <TextInput
-              style={[styles.input, error && styles.inputError]}
-              value={name}
-              onChangeText={(t) => {
-                setError(null);
-                setName(t);
-              }}
-              placeholder="e.g. Goa Trip 2026"
-              placeholderTextColor="#64748B"
-              maxLength={80}
-              autoFocus
-            />
-            {error && <Text style={styles.errorText}>{error}</Text>}
+    <View style={styles.root}>
+      <AppHeader
+        title="Create Group"
+        showBack
+        onBack={() => router.back()}
+      />
+
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 24) + 16 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Header Visual Hero */}
+          <View style={styles.heroSection}>
+            <View style={[styles.heroIconCircle, shadows.subtle]}>
+              <Users size={32} color={colors.primary[600]} />
+            </View>
+            <Text style={styles.heroTitle}>Start a New Group</Text>
+            <Text style={styles.heroSubtitle}>
+              Create a shared workspace for roommates, trips, or friends.
+            </Text>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Description (Optional)</Text>
-            <TextInput
-              style={[styles.input, styles.multilineInput]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="What is this group for?"
-              placeholderTextColor="#64748B"
-              multiline
-              numberOfLines={3}
-              maxLength={500}
+          {/* Form Card */}
+          <View style={[styles.card, shadows.subtle]}>
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>Group Name</Text>
+                <Text style={styles.charCount}>{name.length}/80</Text>
+              </View>
+              <View style={[styles.inputWrapper, error && styles.inputError]}>
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={(t) => {
+                    setError(null);
+                    setName(t);
+                  }}
+                  placeholder="e.g. Goa Trip 2026, Flat 402"
+                  placeholderTextColor={colors.textMuted}
+                  maxLength={80}
+                  autoFocus
+                />
+              </View>
+              {error && <Text style={styles.errorText}>{error}</Text>}
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Description (Optional)</Text>
+              <View style={styles.multilineWrapper}>
+                <TextInput
+                  style={styles.multilineInput}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="What will this group share? (trips, groceries, dinners)"
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  numberOfLines={3}
+                  maxLength={500}
+                />
+              </View>
+            </View>
+
+            <PrimaryButton
+              label="Create Group"
+              onPress={handleCreate}
+              loading={loading}
             />
           </View>
 
-          <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.buttonDisabled]}
-            onPress={handleCreate}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.primaryButtonText}>Create Group</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {/* Security & Offline Notice */}
+          <View style={styles.infoRow}>
+            <ShieldCheck size={16} color={colors.textSecondary} />
+            <Text style={styles.infoText}>
+              All group expenses are private and invite-only.
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   keyboardView: {
     flex: 1,
-    backgroundColor: '#0F172A',
   },
-  container: {
-    padding: 20,
+  scrollContent: {
+    padding: spacing.md,
+    gap: spacing.lg,
   },
-  formCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
-    padding: 20,
+  heroSection: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  heroIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: colors.surfaceSelected,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  heroTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  heroSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    maxWidth: 280,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.borderSubtle,
+    gap: spacing.lg,
   },
-  inputGroup: {
-    marginBottom: 20,
+  inputGroup: {},
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
   },
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#E2E8F0',
-    marginBottom: 8,
+    color: colors.textPrimary,
   },
-  input: {
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#F8FAFC',
-    fontSize: 15,
+  charCount: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  inputWrapper: {
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  multilineInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
   },
   inputError: {
-    borderColor: '#EF4444',
+    borderColor: colors.danger[600],
+  },
+  input: {
+    fontSize: 15,
+    color: colors.textPrimary,
+    padding: 0,
+  },
+  multilineWrapper: {
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: 80,
+  },
+  multilineInput: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    textAlignVertical: 'top',
+    padding: 0,
+    minHeight: 64,
   },
   errorText: {
-    color: '#EF4444',
     fontSize: 12,
-    marginTop: 5,
+    color: colors.danger[600],
+    marginTop: 4,
   },
-  primaryButton: {
-    backgroundColor: '#2563EB',
-    paddingVertical: 14,
-    borderRadius: 10,
+  infoRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: spacing.xs,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+  infoText: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
 });

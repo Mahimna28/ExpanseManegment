@@ -12,12 +12,15 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signIn } from '../../src/services/auth';
 import { loginSchema } from '../../src/engine/validation';
+import { colors, spacing, typography, radii, shadows } from '../../src/theme';
 import { Receipt, Lock, Mail } from 'lucide-react-native';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -53,26 +56,35 @@ export default function LoginScreen() {
       style={styles.keyboardView}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          {
+            paddingTop: Math.max(insets.top, 24) + 24,
+            paddingBottom: Math.max(insets.bottom, 24) + 24,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
-          <View style={styles.logoBadge}>
-            <Receipt size={32} color="#3B82F6" />
+          <View style={[styles.logoBadge, shadows.subtle]}>
+            <Receipt size={32} color={colors.primary} />
           </View>
           <Text style={styles.title}>ExpenseShare</Text>
           <Text style={styles.subtitle}>Private group expense management</Text>
         </View>
 
-        <View style={styles.formCard}>
+        <View style={[styles.formCard, shadows.card]}>
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Email Address</Text>
             <View style={[styles.inputWrapper, errors.email && styles.inputError]}>
-              <Mail size={18} color="#64748B" />
+              <Mail size={18} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
                 placeholder="name@example.com"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={colors.textDim}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -89,13 +101,13 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
             <View style={[styles.inputWrapper, errors.password && styles.inputError]}>
-              <Lock size={18} color="#64748B" />
+              <Lock size={18} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
                 placeholder="••••••••"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={colors.textDim}
                 secureTextEntry
               />
             </View>
@@ -106,6 +118,7 @@ export default function LoginScreen() {
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
             onPress={handleLogin}
             disabled={loading}
+            activeOpacity={0.8}
           >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -129,97 +142,97 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: colors.background,
   },
   container: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingHorizontal: spacing.lg,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: spacing.xl,
   },
   logoBadge: {
     width: 64,
     height: 64,
-    borderRadius: 20,
-    backgroundColor: '#1E293B',
+    borderRadius: radii.xl,
+    backgroundColor: colors.primarySubtle,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#334155',
+    marginBottom: spacing.md,
   },
   title: {
     fontSize: 26,
     fontWeight: '700',
-    color: '#F8FAFC',
-    marginBottom: 6,
+    color: colors.textPrimary,
+    marginBottom: 4,
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 14,
-    color: '#94A3B8',
+    color: colors.textSecondary,
   },
   formCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
-    padding: 24,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
     borderWidth: 1,
-    borderColor: '#334155',
-    marginBottom: 24,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xl,
   },
   inputGroup: {
-    marginBottom: 18,
+    marginBottom: spacing.lg,
   },
   labelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#E2E8F0',
-    marginBottom: 8,
+    color: colors.textPrimary,
+    marginBottom: 6,
   },
   forgotText: {
     fontSize: 12,
-    color: '#3B82F6',
-    fontWeight: '500',
+    color: colors.primary,
+    fontWeight: '600',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
   },
   input: {
     flex: 1,
-    color: '#F8FAFC',
+    color: colors.textPrimary,
     fontSize: 15,
+    padding: 0,
   },
   inputError: {
-    borderColor: '#EF4444',
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerBg,
   },
   errorText: {
-    color: '#EF4444',
+    color: colors.danger,
     fontSize: 12,
     marginTop: 5,
   },
   primaryButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: radii.md,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.xs,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -227,7 +240,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   footer: {
     flexDirection: 'row',
@@ -235,12 +248,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   footerText: {
-    color: '#94A3B8',
+    color: colors.textSecondary,
     fontSize: 14,
   },
   footerLink: {
-    color: '#3B82F6',
+    color: colors.primary,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

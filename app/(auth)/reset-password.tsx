@@ -9,14 +9,18 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { requestPasswordReset } from '../../src/services/auth';
 import { resetPasswordSchema } from '../../src/engine/validation';
-import { Mail, ArrowLeft } from 'lucide-react-native';
+import { colors, spacing, typography, radii, shadows } from '../../src/theme';
+import { Mail, ArrowLeft, CheckCircle2 } from 'lucide-react-native';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,19 +51,37 @@ export default function ResetPasswordScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <ArrowLeft size={20} color="#94A3B8" />
-        <Text style={styles.backText}>Back to Sign In</Text>
-      </TouchableOpacity>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingTop: Math.max(insets.top, 24) + 16,
+            paddingBottom: Math.max(insets.bottom, 24) + 24,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <ArrowLeft size={20} color={colors.textSecondary} />
+          <Text style={styles.backText}>Back to Sign In</Text>
+        </TouchableOpacity>
 
-      <View style={styles.content}>
-        <Text style={styles.title}>Reset Password</Text>
-        <Text style={styles.subtitle}>
-          Enter your email address and we'll send you a password reset link.
-        </Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>Reset Password</Text>
+          <Text style={styles.subtitle}>
+            Enter your email address and we'll send you a password reset link.
+          </Text>
+        </View>
 
         {sent ? (
-          <View style={styles.successCard}>
+          <View style={[styles.successCard, shadows.card]}>
+            <View style={styles.successIconWrapper}>
+              <CheckCircle2 size={36} color={colors.moneyPositive} />
+            </View>
             <Text style={styles.successTitle}>Check your email</Text>
             <Text style={styles.successText}>
               We sent a reset link to {email}. Open the link on this device to reset your password.
@@ -67,16 +89,17 @@ export default function ResetPasswordScreen() {
             <TouchableOpacity
               style={styles.primaryButton}
               onPress={() => router.replace('/(auth)/login')}
+              activeOpacity={0.8}
             >
               <Text style={styles.primaryButtonText}>Return to Sign In</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.formCard}>
+          <View style={[styles.formCard, shadows.card]}>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Email Address</Text>
               <View style={[styles.inputWrapper, error && styles.inputError]}>
-                <Mail size={18} color="#64748B" />
+                <Mail size={18} color={colors.textSecondary} />
                 <TextInput
                   style={styles.input}
                   value={email}
@@ -85,7 +108,7 @@ export default function ResetPasswordScreen() {
                     setEmail(t);
                   }}
                   placeholder="name@example.com"
-                  placeholderTextColor="#64748B"
+                  placeholderTextColor={colors.textDim}
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
@@ -97,6 +120,7 @@ export default function ResetPasswordScreen() {
               style={[styles.primaryButton, loading && styles.buttonDisabled]}
               onPress={handleReset}
               disabled={loading}
+              activeOpacity={0.8}
             >
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" />
@@ -106,7 +130,7 @@ export default function ResetPasswordScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -114,102 +138,113 @@ export default function ResetPasswordScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 24,
-    paddingTop: 60,
+    backgroundColor: colors.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.lg,
+    justifyContent: 'center',
   },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 32,
+    marginBottom: spacing.xl,
+    alignSelf: 'flex-start',
   },
   backText: {
-    color: '#94A3B8',
+    color: colors.textSecondary,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingBottom: 80,
+  header: {
+    marginBottom: spacing.xl,
   },
   title: {
     fontSize: 26,
     fontWeight: '700',
-    color: '#F8FAFC',
-    marginBottom: 8,
+    color: colors.textPrimary,
+    marginBottom: 6,
+    letterSpacing: -0.4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#94A3B8',
-    marginBottom: 28,
+    color: colors.textSecondary,
     lineHeight: 20,
   },
   formCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
-    padding: 24,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.borderSubtle,
   },
   successCard: {
-    backgroundColor: '#064E3B',
-    borderRadius: 16,
-    padding: 24,
+    backgroundColor: colors.moneyPositiveBg,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
     borderWidth: 1,
-    borderColor: '#059669',
+    borderColor: colors.moneyPositiveBorder,
+    alignItems: 'center',
+  },
+  successIconWrapper: {
+    marginBottom: spacing.md,
   },
   successTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#ECFDF5',
+    color: colors.textPrimary,
     marginBottom: 8,
+    textAlign: 'center',
   },
   successText: {
     fontSize: 14,
-    color: '#A7F3D0',
-    lineHeight: 22,
-    marginBottom: 20,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.xl,
+    textAlign: 'center',
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: spacing.lg,
   },
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
   },
   input: {
     flex: 1,
-    color: '#F8FAFC',
+    color: colors.textPrimary,
     fontSize: 15,
+    padding: 0,
   },
   inputError: {
-    borderColor: '#EF4444',
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerBg,
   },
   errorText: {
-    color: '#EF4444',
+    color: colors.danger,
     fontSize: 12,
     marginTop: 5,
   },
   primaryButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: radii.md,
     alignItems: 'center',
+    width: '100%',
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -217,6 +252,6 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

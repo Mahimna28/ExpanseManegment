@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useAppLock } from '../../hooks/useAppLock';
 import { Lock, Fingerprint } from 'lucide-react-native';
+import { colors, radii, spacing, typography, shadows } from '../../theme';
 
 export function PinLockModal() {
   const {
@@ -56,8 +57,8 @@ export function PinLockModal() {
   return (
     <Modal visible={isVisible} animationType="fade" transparent={false}>
       <View style={styles.container}>
-        <View style={styles.iconCircle}>
-          <Lock size={32} color="#2563EB" />
+        <View style={[styles.iconCircle, shadows.subtle]}>
+          <Lock size={32} color={colors.primary} />
         </View>
 
         <Text style={styles.title}>ExpenseShare is Locked</Text>
@@ -71,7 +72,7 @@ export function PinLockModal() {
             setPin(text.replace(/[^0-9]/g, ''));
           }}
           placeholder="••••"
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={colors.textDim}
           keyboardType="numeric"
           secureTextEntry
           maxLength={6}
@@ -79,15 +80,20 @@ export function PinLockModal() {
           onSubmitEditing={handleUnlock}
         />
 
-        <TouchableOpacity style={styles.unlockButton} onPress={handleUnlock}>
+        <TouchableOpacity
+          style={[styles.unlockButton, shadows.subtle]}
+          onPress={handleUnlock}
+          activeOpacity={0.8}
+        >
           <Text style={styles.unlockButtonText}>Unlock</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.biometricButton}
           onPress={() => authenticateWithBiometrics()}
+          activeOpacity={0.7}
         >
-          <Fingerprint size={20} color="#2563EB" />
+          <Fingerprint size={20} color={colors.primary} />
           <Text style={styles.biometricText}>Use Biometrics</Text>
         </TouchableOpacity>
       </View>
@@ -98,60 +104,62 @@ export function PinLockModal() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#1E293B',
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: colors.primarySubtle,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: spacing.lg,
   },
   title: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#F8FAFC',
-    marginBottom: 8,
+    color: colors.textPrimary,
+    marginBottom: 6,
+    letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 14,
-    color: '#94A3B8',
+    color: colors.textSecondary,
     marginBottom: 32,
     textAlign: 'center',
   },
   pinInput: {
-    backgroundColor: '#1E293B',
-    color: '#F8FAFC',
+    backgroundColor: colors.surface,
+    color: colors.textPrimary,
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
     letterSpacing: 8,
-    width: 180,
+    width: 200,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: radii.md,
     borderWidth: 1.5,
-    borderColor: '#334155',
-    marginBottom: 24,
+    borderColor: colors.border,
+    marginBottom: 20,
   },
   pinInputError: {
-    borderColor: '#EF4444',
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerBg,
   },
   unlockButton: {
-    backgroundColor: '#2563EB',
-    width: 180,
+    backgroundColor: colors.primary,
+    width: 200,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: radii.md,
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   unlockButtonText: {
     color: '#FFFFFF',
-    fontWeight: '600',
+    fontWeight: '700',
     fontSize: 16,
   },
   biometricButton: {
@@ -161,8 +169,8 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   biometricText: {
-    color: '#60A5FA',
+    color: colors.primary,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });

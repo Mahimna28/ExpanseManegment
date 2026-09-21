@@ -7,8 +7,10 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { CategoriesRepo } from '../../../../src/repositories/categories.repo';
 import { useAuthStore } from '../../../../src/stores/auth.store';
@@ -16,21 +18,27 @@ import { useSyncStore } from '../../../../src/stores/sync.store';
 import { supabase } from '../../../../src/services/supabase';
 import { categoryNameSchema } from '../../../../src/engine/validation';
 import { triggerSync } from '../../../../src/sync/engine';
-import { Plus, Archive, Tag } from 'lucide-react-native';
+import { AppHeader, CategoryBadge } from '../../../../src/components/ui';
+import { colors, spacing, typography, radii, shadows } from '../../../../src/theme';
+import { Plus, Archive, Tag, HelpCircle } from 'lucide-react-native';
 
 export default function GroupCategoriesScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const currentUserId = useAuthStore((s) => s.userId);
 
   const categories = CategoriesRepo.listActiveCategories(groupId);
   const [newCatName, setNewCatName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleCreateCategory = async () => {
+    setError(null);
     const trimmed = newCatName.trim();
     const validation = categoryNameSchema.safeParse(trimmed);
     if (!validation.success) {
-      Alert.alert('Validation Error', validation.error.errors[0].message);
+      setError(validation.error.errors[0].message);
       return;
     }
 
@@ -55,7 +63,7 @@ export default function GroupCategoriesScreen() {
       setNewCatName('');
       useSyncStore.getState().incrementDbVersion();
 
-      // 2. Insert to Supabase directly (categories table has RLS policy for active members)
+      // 2. Insert to Supabase directly
       await supabase.from('categories').insert({
         id: catId,
         group_id: groupId,
@@ -65,7 +73,7 @@ export default function GroupCategoriesScreen() {
 
       triggerSync().catch(console.warn);
     } catch (err: unknown) {
-      console.warn(err);
+      console.warn('Category creation sync error:', err);
     } finally {
       setLoading(false);
     }
@@ -74,7 +82,7 @@ export default function GroupCategoriesScreen() {
   const handleArchive = (catId: string, catName: string) => {
     Alert.alert(
       'Archive Category',
-      `Archive "${catName}"? Past expenses with this category will keep their tag, but it won't appear for new expenses.`,
+      `Archive "${catName}"? Past expenses will retain this category, but it will be hidden for future expenses.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -95,7 +103,7 @@ export default function GroupCategoriesScreen() {
 
               triggerSync().catch(console.warn);
             } catch (err: unknown) {
-              console.warn(err);
+              console.warn('Category archive sync error:', err);
             }
           },
         },
@@ -104,151 +112,189 @@ export default function GroupCategoriesScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Create Category Form */}
-      <View style={styles.card}>
-        <Text style={styles.cardHeader}>Add New Category</Text>
-        <View style={styles.addRow}>
-          <TextInput
-            style={styles.input}
-            value={newCatName}
-            onChangeText={setNewCatName}
-            placeholder="e.g. Groceries, Fuel, Hotel"
-            placeholderTextColor="#64748B"
-            maxLength={50}
-          />
-          <TouchableOpacity
-            style={[styles.addButton, loading && styles.buttonDisabled]}
-            onPress={handleCreateCategory}
-            disabled={loading}
-          >
-            <Plus size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-      </View>
+    <View style={styles.root}>
+      <AppHeader
+        title="Categories"
+        showBack
+        onBack={() => router.back()}
+      />
 
-      {/* Category List */}
-      <Text style={styles.sectionTitle}>Active Categories ({categories.length})</Text>
-      <View style={styles.listCard}>
-        {categories.map((cat) => (
-          <View key={cat.id} style={styles.catRow}>
-            <View style={styles.catNameGroup}>
-              <Tag size={16} color="#3B82F6" />
-              <Text style={styles.catName}>{cat.name}</Text>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom, 24) + 16 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Add New Category Card */}
+        <View style={[styles.card, shadows.subtle]}>
+          <Text style={styles.cardTitle}>Add Category</Text>
+          <View style={styles.inputRow}>
+            <View style={[styles.inputWrapper, error && styles.inputError]}>
+              <Tag size={16} color={colors.textSecondary} />
+              <TextInput
+                style={styles.input}
+                value={newCatName}
+                onChangeText={(t) => {
+                  setError(null);
+                  setNewCatName(t);
+                }}
+                placeholder="e.g. Groceries, Fuel, Hotel"
+                placeholderTextColor={colors.textMuted}
+                maxLength={50}
+              />
             </View>
+
             <TouchableOpacity
-              style={styles.archiveBtn}
-              onPress={() => handleArchive(cat.id, cat.name)}
+              style={[
+                styles.addBtn,
+                (!newCatName.trim() || loading) && styles.addBtnDisabled,
+              ]}
+              onPress={handleCreateCategory}
+              disabled={!newCatName.trim() || loading}
             >
-              <Archive size={16} color="#64748B" />
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Plus size={20} color="#FFFFFF" />
+              )}
             </TouchableOpacity>
           </View>
-        ))}
+          {error && <Text style={styles.errorText}>{error}</Text>}
+        </View>
 
-        {categories.length === 0 && (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>
-              No custom categories created yet. Expenses default to "General".
-            </Text>
+        {/* Existing Categories List */}
+        <View style={[styles.card, shadows.subtle]}>
+          <Text style={styles.cardTitle}>Active Categories ({categories.length + 1})</Text>
+
+          {/* Default General Category (Cannot be deleted) */}
+          <View style={styles.categoryItemRow}>
+            <CategoryBadge categoryName="General" size={32} />
+            <Text style={styles.defaultLabel}>Default</Text>
           </View>
-        )}
-      </View>
-    </ScrollView>
+
+          {categories.map((cat) => (
+            <View key={cat.id} style={styles.categoryItemRow}>
+              <CategoryBadge categoryName={cat.name} size={32} />
+              <TouchableOpacity
+                style={styles.archiveBtn}
+                onPress={() => handleArchive(cat.id, cat.name)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Archive size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+
+        {/* Informational Card */}
+        <View style={styles.infoCard}>
+          <HelpCircle size={16} color={colors.textSecondary} />
+          <Text style={styles.infoText}>
+            Categories help group and summarize spending. You can add custom categories for this group at any time.
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: colors.background,
   },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
+  scrollContent: {
+    padding: spacing.md,
+    gap: spacing.md,
   },
   card: {
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 20,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.borderSubtle,
+    gap: spacing.sm,
   },
-  cardHeader: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
-  addRow: {
+  inputRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: spacing.sm,
+    alignItems: 'center',
+    marginTop: spacing.xs,
+  },
+  inputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  inputError: {
+    borderColor: colors.danger[600],
   },
   input: {
     flex: 1,
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#F8FAFC',
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: '#334155',
+    fontSize: 14,
+    color: colors.textPrimary,
+    padding: 0,
   },
-  addButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 10,
-    width: 48,
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.md,
+    backgroundColor: colors.primary[600],
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonDisabled: {
-    opacity: 0.6,
+  addBtnDisabled: {
+    opacity: 0.5,
   },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
+  errorText: {
+    fontSize: 12,
+    color: colors.danger[600],
   },
-  listCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  catRow: {
+  categoryItemRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#0F172A',
+    borderBottomColor: colors.borderSubtle,
   },
-  catNameGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  catName: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#F8FAFC',
+  defaultLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.sm,
   },
   archiveBtn: {
-    padding: 6,
+    padding: 4,
   },
-  emptyContainer: {
-    padding: 24,
-    alignItems: 'center',
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.lg,
+    padding: spacing.md,
   },
-  emptyText: {
-    color: '#64748B',
-    fontSize: 13,
-    textAlign: 'center',
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
 });

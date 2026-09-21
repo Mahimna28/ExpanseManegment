@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,27 +8,34 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGroupBalances } from '../../../../src/hooks/useGroupBalances';
 import { SettlementsRepo } from '../../../../src/repositories/settlements.repo';
 import { GroupsRepo } from '../../../../src/repositories/groups.repo';
 import { useAuthStore } from '../../../../src/stores/auth.store';
 import { paiseToRupees } from '../../../../src/engine/currency';
 import { triggerSync } from '../../../../src/sync/engine';
-import { ArrowRight, Plus, Trash2, CheckCircle } from 'lucide-react-native';
+import { AppHeader, DebtFlowCard, EmptyState, Avatar } from '../../../../src/components/ui';
+import { colors, spacing, typography, radii, shadows } from '../../../../src/theme';
+import { Plus, ArrowRight, Trash2, CheckCircle2, ArrowRightLeft } from 'lucide-react-native';
 
 export default function GroupSettlementsScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const currentUserId = useAuthStore((s) => s.userId);
 
   const members = GroupsRepo.listMembers(groupId);
   const { suggestions } = useGroupBalances(groupId);
   const settlements = SettlementsRepo.listSettlements(groupId, false);
 
-  const memberNameMap = new Map<string, string>();
-  members.forEach((m) => {
-    memberNameMap.set(m.user_id, m.display_name || m.email?.split('@')[0] || 'Member');
-  });
+  const memberNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    members.forEach((m) => {
+      map.set(m.user_id, m.display_name || m.email?.split('@')[0] || 'Member');
+    });
+    return map;
+  }, [members]);
 
   const handleVoidSettlement = (settlementId: string) => {
     Alert.alert(
@@ -53,220 +60,254 @@ export default function GroupSettlementsScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Debt Simplification / Suggested Transfers */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Suggested Settlements</Text>
-        <Text style={styles.sectionSubtitle}>
-          Minimum number of transfers to clear all debts in the group.
-        </Text>
+    <View style={styles.root}>
+      <AppHeader
+        title="Settlements"
+        showBack
+        onBack={() => router.back()}
+        rightAction={
+          <TouchableOpacity
+            onPress={() =>
+              router.push(`/(app)/group/${groupId}/new-settlement` as any)
+            }
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Plus size={22} color={colors.primary[600]} />
+          </TouchableOpacity>
+        }
+      />
 
-        <View style={styles.card}>
-          {suggestions.map((s, idx) => {
-            const debtorName = memberNameMap.get(s.from_user_id) || 'Debtor';
-            const creditorName = memberNameMap.get(s.to_user_id) || 'Creditor';
-            return (
-              <View key={idx} style={styles.suggestionRow}>
-                <View style={styles.parties}>
-                  <Text style={styles.debtorText}>{debtorName}</Text>
-                  <ArrowRight size={14} color="#94A3B8" />
-                  <Text style={styles.creditorText}>{creditorName}</Text>
-                </View>
-                <Text style={styles.suggestionAmount}>
-                  {paiseToRupees(s.amount_paise)}
-                </Text>
-              </View>
-            );
-          })}
-
-          {suggestions.length === 0 && (
-            <View style={styles.allSettled}>
-              <CheckCircle size={24} color="#10B981" />
-              <Text style={styles.allSettledText}>All group balances are settled!</Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      {/* Record Settlement Button */}
-      <TouchableOpacity
-        style={styles.recordButton}
-        onPress={() => router.push(`/(app)/group/${groupId}/new-settlement` as any)}
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom, 24) + 16 },
+        ]}
       >
-        <Plus size={18} color="#FFFFFF" />
-        <Text style={styles.recordButtonText}>Record a Settlement</Text>
-      </TouchableOpacity>
+        {/* Section 1: Suggested Debt Transfers */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Suggested Settlements</Text>
+          <Text style={styles.sectionSubtitle}>
+            Minimum transfers to clear all group debts.
+          </Text>
+        </View>
 
-      {/* Past Recorded Settlements */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Settlement History</Text>
-        {settlements.map((s) => {
-          const fromName = memberNameMap.get(s.from_user_id) || 'Debtor';
-          const toName = memberNameMap.get(s.to_user_id) || 'Creditor';
-          return (
-            <View key={s.id} style={styles.historyCard}>
-              <View style={styles.historyInfo}>
-                <Text style={styles.historyTitle}>
-                  {fromName} paid {toName}
-                </Text>
-                <Text style={styles.historyMethod}>
-                  Method: {s.payment_method.toUpperCase()}
-                  {s.note ? ` • "${s.note}"` : ''}
-                </Text>
-              </View>
-              <View style={styles.historyRight}>
-                <Text style={styles.historyAmount}>{paiseToRupees(s.amount_paise)}</Text>
-                <TouchableOpacity
-                  onPress={() => handleVoidSettlement(s.id)}
-                  style={styles.voidIconBtn}
-                >
-                  <Trash2 size={16} color="#64748B" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          );
-        })}
+        {suggestions.length > 0 ? (
+          <View style={styles.cardsList}>
+            {suggestions.map((s, idx) => {
+              const fromName = memberNameMap.get(s.from_user_id) || 'Debtor';
+              const toName = memberNameMap.get(s.to_user_id) || 'Creditor';
+              const isMeFrom = s.from_user_id === currentUserId;
+              const isMeTo = s.to_user_id === currentUserId;
 
-        {settlements.length === 0 && (
-          <View style={styles.emptyHistory}>
-            <Text style={styles.emptyHistoryText}>No settlements recorded yet.</Text>
+              return (
+                <DebtFlowCard
+                  key={idx}
+                  fromName={fromName}
+                  toName={toName}
+                  amountPaise={s.amount_paise}
+                  isMeFrom={isMeFrom}
+                  isMeTo={isMeTo}
+                  onSettle={() =>
+                    router.push({
+                      pathname: `/(app)/group/${groupId}/new-settlement` as any,
+                      params: {
+                        fromUserId: s.from_user_id,
+                        toUserId: s.to_user_id,
+                        amountPaise: s.amount_paise.toString(),
+                      },
+                    })
+                  }
+                />
+              );
+            })}
+          </View>
+        ) : (
+          <View style={[styles.allSettledCard, shadows.subtle]}>
+            <CheckCircle2 size={32} color={colors.moneyPositive} />
+            <Text style={styles.allSettledTitle}>All Balances Settled</Text>
+            <Text style={styles.allSettledSub}>
+              Nobody in this group owes anything right now!
+            </Text>
           </View>
         )}
-      </View>
-    </ScrollView>
+
+        {/* Section 2: Historical Settlements */}
+        <View style={[styles.sectionHeader, { marginTop: spacing.md }]}>
+          <Text style={styles.sectionTitle}>Settlement History</Text>
+          <Text style={styles.sectionSubtitle}>
+            Past payments recorded between group members.
+          </Text>
+        </View>
+
+        {settlements.length > 0 ? (
+          <View style={styles.historyList}>
+            {settlements.map((item) => {
+              const payerName = memberNameMap.get(item.from_user_id) || 'Payer';
+              const recipientName = memberNameMap.get(item.to_user_id) || 'Recipient';
+              return (
+                <View key={item.id} style={[styles.historyCard, shadows.subtle]}>
+                  <View style={styles.historyMainRow}>
+                    <View style={styles.partiesCol}>
+                      <View style={styles.partyRow}>
+                        <Avatar name={payerName} size={24} />
+                        <Text style={styles.partyName}>{payerName}</Text>
+                        <ArrowRight size={14} color={colors.textSecondary} />
+                        <Avatar name={recipientName} size={24} />
+                        <Text style={styles.partyName}>{recipientName}</Text>
+                      </View>
+                      <View style={styles.historySubRow}>
+                        <Text style={styles.methodBadge}>{item.payment_method.toUpperCase()}</Text>
+                        <Text style={styles.historyDate}>
+                          {new Date(item.created_at).toLocaleDateString()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.historyRightCol}>
+                      <Text style={styles.historyAmount}>
+                        {paiseToRupees(item.amount_paise)}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.voidIconBtn}
+                        onPress={() => handleVoidSettlement(item.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Trash2 size={16} color={colors.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {item.note && (
+                    <Text style={styles.historyNote}>"{item.note}"</Text>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <EmptyState
+            icon={<ArrowRightLeft size={32} color={colors.textMuted} />}
+            title="No Settlements Recorded"
+            description="When members pay each other back, tap '+ Record Payment' above to log the settlement."
+          />
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: colors.background,
   },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
+  scrollContent: {
+    padding: spacing.md,
+    gap: spacing.sm,
   },
-  section: {
-    marginBottom: 20,
+  sectionHeader: {
+    marginBottom: spacing.xs,
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   sectionSubtitle: {
     fontSize: 12,
-    color: '#64748B',
-    marginBottom: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
-  card: {
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
-    padding: 14,
+  cardsList: {
+    gap: spacing.sm,
+  },
+  allSettledCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.borderSubtle,
+    gap: 6,
   },
-  suggestionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#0F172A',
-  },
-  parties: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  debtorText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#F8FAFC',
-  },
-  creditorText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#10B981',
-  },
-  suggestionAmount: {
-    fontSize: 15,
+  allSettledTitle: {
+    fontSize: 16,
     fontWeight: '700',
-    color: '#3B82F6',
+    color: colors.textPrimary,
+    marginTop: 6,
   },
-  allSettled: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 16,
+  allSettledSub: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
-  allSettledText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#10B981',
-  },
-  recordButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#2563EB',
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginBottom: 24,
-  },
-  recordButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 15,
+  historyList: {
+    gap: spacing.sm,
   },
   historyCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.borderSubtle,
+    gap: spacing.xs,
   },
-  historyInfo: {
-    flex: 1,
-  },
-  historyTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#F8FAFC',
-    marginBottom: 2,
-  },
-  historyMethod: {
-    fontSize: 12,
-    color: '#94A3B8',
-  },
-  historyRight: {
+  historyMainRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'space-between',
+  },
+  partiesCol: {
+    flex: 1,
+    gap: 6,
+  },
+  partyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  partyName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  historySubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  methodBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary[600],
+    backgroundColor: colors.surfaceSelected,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+  },
+  historyDate: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  historyRightCol: {
+    alignItems: 'flex-end',
+    gap: 6,
   },
   historyAmount: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#10B981',
+    color: colors.moneyPositive,
   },
   voidIconBtn: {
-    padding: 4,
+    padding: 2,
   },
-  emptyHistory: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  emptyHistoryText: {
-    color: '#64748B',
-    fontSize: 14,
+  historyNote: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSubtle,
   },
 });

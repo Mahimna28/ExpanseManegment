@@ -12,6 +12,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signUp } from '../../src/services/auth';
 import {
   savePendingInviteCode,
@@ -19,10 +20,12 @@ import {
   redeemPendingInvite,
 } from '../../src/services/invites';
 import { registerSchema } from '../../src/engine/validation';
+import { colors, spacing, typography, radii, shadows } from '../../src/theme';
 import { User, Lock, Mail, KeyRound } from 'lucide-react-native';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -98,23 +101,32 @@ export default function RegisterScreen() {
       style={styles.keyboardView}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          {
+            paddingTop: Math.max(insets.top, 24) + 20,
+            paddingBottom: Math.max(insets.bottom, 24) + 24,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
           <Text style={styles.title}>Join ExpenseShare</Text>
           <Text style={styles.subtitle}>Enter your details and group invite code</Text>
         </View>
 
-        <View style={styles.formCard}>
+        <View style={[styles.formCard, shadows.card]}>
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Your Name</Text>
             <View style={[styles.inputWrapper, errors.display_name && styles.inputError]}>
-              <User size={18} color="#64748B" />
+              <User size={18} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
                 value={displayName}
                 onChangeText={setDisplayName}
                 placeholder="e.g. Mahimna"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={colors.textDim}
               />
             </View>
             {errors.display_name && <Text style={styles.errorText}>{errors.display_name}</Text>}
@@ -123,13 +135,13 @@ export default function RegisterScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Email Address</Text>
             <View style={[styles.inputWrapper, errors.email && styles.inputError]}>
-              <Mail size={18} color="#64748B" />
+              <Mail size={18} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
                 placeholder="name@example.com"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={colors.textDim}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -144,13 +156,13 @@ export default function RegisterScreen() {
               <Text style={styles.optionalBadge}>Optional</Text>
             </View>
             <View style={[styles.inputWrapper, errors.invite_code && styles.inputError]}>
-              <KeyRound size={18} color="#64748B" />
+              <KeyRound size={18} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
                 value={inviteCode}
                 onChangeText={(t) => setInviteCode(t.toUpperCase())}
                 placeholder="Leave blank to create a new group"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={colors.textDim}
                 autoCapitalize="characters"
                 maxLength={10}
               />
@@ -165,13 +177,13 @@ export default function RegisterScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Password (min 8 chars)</Text>
             <View style={[styles.inputWrapper, errors.password && styles.inputError]}>
-              <Lock size={18} color="#64748B" />
+              <Lock size={18} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
                 placeholder="••••••••"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={colors.textDim}
                 secureTextEntry
               />
             </View>
@@ -181,13 +193,13 @@ export default function RegisterScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Confirm Password</Text>
             <View style={[styles.inputWrapper, errors.confirmPassword && styles.inputError]}>
-              <Lock size={18} color="#64748B" />
+              <Lock size={18} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 placeholder="••••••••"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={colors.textDim}
                 secureTextEntry
               />
             </View>
@@ -200,6 +212,7 @@ export default function RegisterScreen() {
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
             onPress={handleRegister}
             disabled={loading}
+            activeOpacity={0.8}
           >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -223,76 +236,98 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: colors.background,
   },
   container: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 36,
+    paddingHorizontal: spacing.lg,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xl,
   },
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#F8FAFC',
-    marginBottom: 6,
+    color: colors.textPrimary,
+    marginBottom: 4,
+    letterSpacing: -0.4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#94A3B8',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   formCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
-    padding: 24,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
     borderWidth: 1,
-    borderColor: '#334155',
-    marginBottom: 20,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.lg,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: spacing.md,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
   },
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#E2E8F0',
-    marginBottom: 8,
+    color: colors.textPrimary,
+    marginBottom: 6,
+  },
+  optionalBadge: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    backgroundColor: colors.surfaceSubtle,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
   },
   input: {
     flex: 1,
-    color: '#F8FAFC',
+    color: colors.textPrimary,
     fontSize: 15,
+    padding: 0,
   },
   inputError: {
-    borderColor: '#EF4444',
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerBg,
   },
   errorText: {
-    color: '#EF4444',
+    color: colors.danger,
     fontSize: 12,
-    marginTop: 5,
+    marginTop: 4,
+  },
+  helpText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
   primaryButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: radii.md,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -300,7 +335,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   footer: {
     flexDirection: 'row',
@@ -308,32 +343,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   footerText: {
-    color: '#94A3B8',
+    color: colors.textSecondary,
     fontSize: 14,
   },
   footerLink: {
-    color: '#3B82F6',
+    color: colors.primary,
     fontSize: 14,
-    fontWeight: '600',
-  },
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  optionalBadge: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#94A3B8',
-    backgroundColor: '#334155',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  helpText: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 4,
+    fontWeight: '700',
   },
 });
